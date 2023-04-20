@@ -64,7 +64,7 @@ func (w *Wechat) registerMsgHandler() {
 
 // ServeHTTP 实现http.Handler接口
 func (w *Wechat) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
-	log.Printf("[DEBUG]ServeHttp|recv request URL:%s", req.URL)
+	log.Printf("[DEBUG]ServeHttp|recv request URL:%s, Method:%s", req.URL, req.Method)
 
 	// 鉴权
 	ret := w.handleValidationRequest(wr, req)
@@ -169,7 +169,7 @@ func (w *Wechat) handleTextMessage(wr http.ResponseWriter, req *http.Request, bo
 		http.Error(wr, "Failed to handle text message", http.StatusInternalServerError)
 		return
 	}
-	response, _ := responseIF.(*TextMessage)
+	response, _ := responseIF.(*TextMessageResponse)
 
 	// 返回响应消息
 	response.ToUserName = textMsg.FromUserName
