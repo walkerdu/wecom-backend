@@ -24,9 +24,7 @@ type Wechat struct {
 	logicMsgHandlerMap map[MessageType]LogicMessageHandler
 }
 
-type MessageHandler func(wr http.ResponseWriter, req *http.Request, body []byte, msg *Message)
-
-//type MessageSubHandler func(msg *Message) (*Message, error)
+type MessageHandler func(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF)
 
 type LogicMessageHandler func(MessageIF) (MessageIF, error)
 
@@ -131,7 +129,7 @@ func (w *Wechat) handleMessageRequest(wr http.ResponseWriter, req *http.Request)
 	log.Printf("[DEBUG]handleMessageRequest|recv request Body:%s", body)
 
 	// 解析XML消息
-	var msg Message
+	var msg MessageReq
 	err = xml.Unmarshal(body, &msg)
 	if err != nil {
 		err = fmt.Errorf("Failed to parse XML message:%s", err)
@@ -155,9 +153,9 @@ func (w *Wechat) handleMessageRequest(wr http.ResponseWriter, req *http.Request)
 }
 
 // handleTextMessage 处理文本消息
-func (w *Wechat) handleTextMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg *Message) {
+func (w *Wechat) handleTextMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 解析文本消息
-	var textMsg TextMessage
+	var textMsg TextMessageReq
 	err := xml.Unmarshal(body, &textMsg)
 	if err != nil {
 		http.Error(wr, "Failed to parse text message", http.StatusBadRequest)
@@ -177,7 +175,7 @@ func (w *Wechat) handleTextMessage(wr http.ResponseWriter, req *http.Request, bo
 		http.Error(wr, "Failed to handle text message", http.StatusInternalServerError)
 		return
 	}
-	response, _ := responseIF.(*TextMessageResponse)
+	response, _ := responseIF.(*TextMessageRsp)
 
 	// 返回响应消息
 	response.ToUserName = textMsg.FromUserName
@@ -194,30 +192,30 @@ func (w *Wechat) handleTextMessage(wr http.ResponseWriter, req *http.Request, bo
 	fmt.Fprintf(wr, string(xmlResponse))
 }
 
-func (w *Wechat) handleImageMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg *Message) {
+func (w *Wechat) handleImageMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理图片消息
 }
 
-func (w *Wechat) handleVoiceMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg *Message) {
+func (w *Wechat) handleVoiceMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理语音消息
 }
 
-func (w *Wechat) handleVideoMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg *Message) {
+func (w *Wechat) handleVideoMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理视频消息
 }
 
-func (w *Wechat) handleShortVideoMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg *Message) {
+func (w *Wechat) handleShortVideoMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理短视频消息
 }
 
-func (w *Wechat) handleLocationMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg *Message) {
+func (w *Wechat) handleLocationMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理位置消息
 }
 
-func (w *Wechat) handleLinkMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg *Message) {
+func (w *Wechat) handleLinkMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理链接消息
 }
 
-func (w *Wechat) handleEventMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg *Message) {
+func (w *Wechat) handleEventMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理事件消息
 }

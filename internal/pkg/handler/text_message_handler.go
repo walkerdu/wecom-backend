@@ -18,9 +18,9 @@ func (t *TextMessageHandler) GetHandlerType() wechat.MessageType {
 }
 
 func (t *TextMessageHandler) HandleMessage(msg wechat.MessageIF) (wechat.MessageIF, error) {
-	textMsg := msg.(*wechat.TextMessage)
+	textMsg := msg.(*wechat.TextMessageReq)
 
-	textMsgRsp := wechat.TextMessageResponse{
+	textMsgRsp := wechat.TextMessageRsp{
 		Content: textMsg.Content + " response",
 	}
 
