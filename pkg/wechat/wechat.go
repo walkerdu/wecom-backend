@@ -121,7 +121,10 @@ func (w *Wechat) handleMessageRequest(wr http.ResponseWriter, req *http.Request)
 	// 读取HTTP请求体
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		http.Error(wr, "Failed to read request body", http.StatusInternalServerError)
+		err = fmt.Errorf("Failed to read request Body:%s", err)
+		log.Printf("[DEBUG]%s", err)
+
+		http.Error(wr, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -131,9 +134,14 @@ func (w *Wechat) handleMessageRequest(wr http.ResponseWriter, req *http.Request)
 	var msg Message
 	err = xml.Unmarshal(body, &msg)
 	if err != nil {
-		http.Error(wr, "Failed to parse XML message", http.StatusBadRequest)
+		err = fmt.Errorf("Failed to parse XML message:%s", err)
+		log.Printf("[DEBUG]%s", err)
+
+		http.Error(wr, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("[DEBUG]handleMessageRequest|Unmarshal message:%v", msg)
 
 	// 处理不同类型的消息
 

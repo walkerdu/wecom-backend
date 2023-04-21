@@ -1,5 +1,9 @@
 package wechat
 
+import (
+	"encoding/xml"
+)
+
 // MessageType 是公众号消息类型
 type MessageType string
 
@@ -20,6 +24,7 @@ type MessageIF interface {
 
 // 公众号消息的通用结构
 type Message struct {
+	XMLName      xml.Name    `xml:"xml"`
 	ToUserName   string      `xml:"ToUserName"`   // 开发者微信号
 	FromUserName string      `xml:"FromUserName"` // 发送方帐号（一个OpenID）
 	CreateTime   int64       `xml:"CreateTime"`   // 消息创建时间 （整型）
