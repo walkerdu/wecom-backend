@@ -184,7 +184,10 @@ func (w *Wechat) handleTextMessage(wr http.ResponseWriter, req *http.Request, bo
 	response.MsgType = MessageTypeText
 	xmlResponse, err := xml.Marshal(response)
 	if err != nil {
-		http.Error(wr, "Failed to marshal XML response", http.StatusInternalServerError)
+		err = fmt.Errorf("Failed to marshal XML response:%s", err)
+		log.Printf("[ERROR]%s", err)
+
+		http.Error(wr, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
