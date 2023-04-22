@@ -17,7 +17,7 @@ type WeChatServer struct {
 }
 
 func NewWeChatServer(config *configs.WeChatConfig) (*WeChatServer, error) {
-	log.Printf("[INFO] NewWeChatServer|WeChatConfig=%v", config)
+	log.Printf("[INFO] NewWeChatServer")
 
 	svr := &WeChatServer{}
 

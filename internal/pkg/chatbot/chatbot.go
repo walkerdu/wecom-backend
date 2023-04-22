@@ -22,11 +22,9 @@ var chatbot *Chatbot
 // NewChatbot 返回一个新的Chatbot实例
 func NewChatbot(config *configs.Config) *Chatbot {
 	chatbot = &Chatbot{}
-	if config != nil {
-		return chatbot
-	}
 
 	if config.OpenAI.ApiKey != "" {
+		log.Printf("[INFO][NewChatbot] create openai client")
 		chatbot.openaiClient = openai.NewClient(config.OpenAI.ApiKey)
 	}
 

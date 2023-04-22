@@ -24,8 +24,9 @@ type MessageHandler func(*http.Response) (MessageIF, error)
 // 创建一个新的OpenAI实例
 func NewClient(apiKey string) *Client {
 	client := &Client{
-		apiKey:  apiKey,
-		baseURL: "https://api.openai.com",
+		apiKey:        apiKey,
+		baseURL:       "https://api.openai.com",
+		msgHandlerMap: make(map[OpenAIPath]MessageHandler),
 	}
 
 	client.RegisterMessageHandler()

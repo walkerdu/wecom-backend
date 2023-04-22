@@ -48,6 +48,8 @@ func main() {
 
 	flag.Parse()
 
+	log.Printf("[INFO] starup config:%v", config)
+
 	chatbot.NewChatbot(config)
 
 	ws, err := service.NewWeChatServer(&config.Wechat)
