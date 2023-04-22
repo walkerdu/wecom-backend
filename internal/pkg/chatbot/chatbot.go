@@ -4,64 +4,80 @@ package chatbot
 
 import (
 	"encoding/json"
-	"errors"
-	"io/ioutil"
+	"log"
 	"net/http"
-	"strings"
+	"time"
 
-	"github.com/walkerdu/weixin-backend/pkg/openai"
+	"github.com/walkerdu/weixin-backend/configs"
+	openai "github.com/walkerdu/weixin-backend/pkg/openai-v1"
 )
 
 // Chatbot 是聊天机器人结构体
 type Chatbot struct {
-	client *openai.Client
+	openaiClient *openai.Client
 }
 
+var chatbot *Chatbot
+
 // NewChatbot 返回一个新的Chatbot实例
-func NewChatbot(client *openai.Client) *Chatbot {
-	return &Chatbot{
-		client: client,
+func NewChatbot(config *configs.Config) *Chatbot {
+	chatbot = &Chatbot{}
+	if config != nil {
+		return chatbot
 	}
+
+	if config.OpenAI.ApiKey != "" {
+		chatbot.openaiClient = openai.NewClient(config.OpenAI.ApiKey)
+	}
+
+	return chatbot
+}
+
+func MustChatbot() *Chatbot {
+	return chatbot
 }
 
 // GetResponse 调用聊天机器人API获取响应
-func (c *Chatbot) GetResponse(input string) (string, error) {
+func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	// 构造请求参数
-	requestBody := struct {
-		Model     string `json:"model"`
-		Prompt    string `json:"prompt"`
-		MaxTokens int    `json:"max_tokens"`
-	}{
-		Model:     "davinci",
-		Prompt:    input,
-		MaxTokens: 50,
+	chatMsg := openai.ChatMessage{
+		Role:    openai.User,
+		Content: input,
 	}
-	requestBodyBytes, err := json.Marshal(requestBody)
+
+	req := &openai.ChatCompletionReq{
+		Model:    openai.Gpt35Turbo,
+		Messages: []openai.ChatMessage{chatMsg},
+		User:     userID,
+	}
+
+	reqBytes, err := json.Marshal(req)
 	if err != nil {
+		log.Printf("[ERROR][GetResponse] Marshal failed, err:%s", err)
 		return "", err
+	}
+
+	client := &http.Client{
+		Timeout: time.Second * 10,
 	}
 
 	// 发送HTTP请求
-	resp, err := c.client.Post("/completions", requestBodyBytes)
+	rsp, err := c.openaiClient.Post(client, string(openai.OpenAIPathChatCompletion), reqBytes)
 	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	// 解析HTTP响应
-	if resp.StatusCode != http.StatusOK {
-		return "", errors.New("chatbot API returned non-200 status code")
-	}
-	responseBodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	var response openai.CompletionResponse
-	err = json.Unmarshal(responseBodyBytes, &response)
-	if err != nil {
+		log.Printf("[ERROR]GetResponse] Post failed, err:%s", err)
 		return "", err
 	}
 
-	// 返回响应文本
-	return strings.TrimSpace(response.Choices[0].Text), nil
+	chatRsp, ok := rsp.(*openai.ChatCompletionRsp)
+	if !ok {
+		log.Printf("[ERROR]GetResponse] rsp invalid rsp:%v", rsp)
+		return "", err
+	}
+
+	var rspContent string
+	for _, choice := range chatRsp.Choices {
+		rspContent += choice.Message.Content
+	}
+
+	return rspContent, nil
 }

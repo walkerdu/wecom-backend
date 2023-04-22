@@ -11,6 +11,7 @@ type WeChatConfig struct {
 
 // openai配置
 type OpenAIConfig struct {
+	ApiKey string
 }
 
 // 企业微信配置
@@ -18,7 +19,7 @@ type WeComConfig struct {
 }
 
 type Config struct {
-	wechatConfig *WeChatConfig
-	openaiConfig *OpenAIConfig
-	wecomConfig  *WeComConfig
+	Wechat WeChatConfig
+	OpenAI OpenAIConfig
+	Wecom  WeComConfig
 }

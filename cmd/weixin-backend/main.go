@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/walkerdu/weixin-backend/configs"
+	"github.com/walkerdu/weixin-backend/internal/pkg/chatbot"
 	"github.com/walkerdu/weixin-backend/internal/pkg/service"
 )
 
@@ -20,6 +21,7 @@ Options:
 	--token <wechat token>
 	--encoding_key <wechat encoding key>
 	--addr <wechat listen addr>
+	--openai_apikey <openai api key>
 `
 	Usage = func() {
 		//fmt.Println(fmt.Sprintf("Usage of %s:\n", os.Args[0]))
@@ -34,17 +36,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	wechatConfig := &configs.WeChatConfig{}
+	config := &configs.Config{}
 
-	flag.StringVar(&wechatConfig.AppID, "appid", "", "wechat appid")
-	flag.StringVar(&wechatConfig.AppSecret, "app_secret", "", "wechat app secret")
-	flag.StringVar(&wechatConfig.Token, "token", "", "wechat token")
-	flag.StringVar(&wechatConfig.EncodingKey, "encoding_key", "", "wechat encoding key")
-	flag.StringVar(&wechatConfig.Addr, "addr", ":80", "wechat listen addr")
+	flag.StringVar(&config.Wechat.AppID, "appid", "", "wechat appid")
+	flag.StringVar(&config.Wechat.AppSecret, "app_secret", "", "wechat app secret")
+	flag.StringVar(&config.Wechat.Token, "token", "", "wechat token")
+	flag.StringVar(&config.Wechat.EncodingKey, "encoding_key", "", "wechat encoding key")
+	flag.StringVar(&config.Wechat.Addr, "addr", ":80", "wechat listen addr")
+
+	flag.StringVar(&config.OpenAI.ApiKey, "openai_apikey", "", "openai api key")
 
 	flag.Parse()
 
-	ws, err := service.NewWeChatServer(wechatConfig)
+	chatbot.NewChatbot(config)
+
+	ws, err := service.NewWeChatServer(&config.Wechat)
 	if err != nil {
 		log.Fatal("[ALERT] NewWeChatServer() failed")
 	}
