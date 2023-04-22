@@ -41,7 +41,7 @@ func (c *Client) RegisterMessageHandler() {
 // Post 发送HTTP POST请求到OpenAI API
 func (c *Client) Post(httpClient *http.Client, path string, requestBody []byte) (MessageIF, error) {
 	// 构造HTTP请求
-	url := c.baseURL + path
+	url := c.baseURL + "/" + path
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, err
