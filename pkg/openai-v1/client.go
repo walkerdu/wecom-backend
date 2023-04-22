@@ -40,6 +40,8 @@ func (c *Client) RegisterMessageHandler() {
 
 // Post 发送HTTP POST请求到OpenAI API
 func (c *Client) Post(httpClient *http.Client, path string, requestBody []byte) (MessageIF, error) {
+	log.Printf("[DEBUG][Post]requestBody %s", requestBody)
+
 	// 构造HTTP请求
 	url := c.baseURL + "/" + path
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(requestBody))
@@ -91,6 +93,8 @@ func (c *Client) handleChatMessage(rsp *http.Response) (MessageIF, error) {
 		log.Printf("[ERROR][handleChatMessage]ReadAll err=%s", err)
 		return nil, err
 	}
+
+	log.Printf("[DEBUG][handleChatMessage] rsp Body%s", rspBytes)
 
 	var chatRsp ChatCompletionRsp
 	if err := json.Unmarshal(rspBytes, &chatRsp); nil != err {
