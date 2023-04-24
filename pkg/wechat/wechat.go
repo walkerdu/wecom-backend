@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,8 +21,10 @@ type Wechat struct {
 	appSecret          string
 	token              string
 	encodingKey        string
-	msgHandlerMap      map[MessageType]MessageHandler
-	logicMsgHandlerMap map[MessageType]LogicMessageHandler
+	msgHandlerMap      map[MessageType]MessageHandler      // 注册各个消息类型对应的逻辑处理Handler
+	logicMsgHandlerMap map[MessageType]LogicMessageHandler // 注册各个消息类型对应的业务逻辑处理Handler
+	concurrencyMsgMap  map[int64]struct{}                  // 按照MsgId防并发
+	mu                 sync.Mutex
 }
 
 type MessageHandler func(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF)
@@ -37,6 +40,7 @@ func NewWechat(appID, appSecret, token, encodingKey string) *Wechat {
 		encodingKey:        encodingKey,
 		msgHandlerMap:      make(map[MessageType]MessageHandler),
 		logicMsgHandlerMap: make(map[MessageType]LogicMessageHandler),
+		concurrencyMsgMap:  make(map[int64]struct{}),
 	}
 
 	w.registerMsgHandler()
@@ -161,6 +165,24 @@ func (w *Wechat) handleTextMessage(wr http.ResponseWriter, req *http.Request, bo
 		http.Error(wr, "Failed to parse text message", http.StatusBadRequest)
 		return
 	}
+
+	w.mu.Lock()
+	if _, exist := w.concurrencyMsgMap[textMsg.MsgId]; exist {
+		err := fmt.Sprintf("message is processing now, please wait a moment, MsgId=%d, FromUserName=%s", textMsg.MsgId, textMsg.FromUserName)
+		log.Printf("[ERROR][handleTextMessage]%s", err)
+
+		http.Error(wr, err, http.StatusInternalServerError)
+		return
+	}
+
+	w.concurrencyMsgMap[textMsg.MsgId] = struct{}{}
+	w.mu.Unlock()
+
+	defer func() {
+		w.mu.Lock()
+		delete(w.concurrencyMsgMap, textMsg.MsgId)
+		w.mu.Unlock()
+	}()
 
 	// 调用处理器处理消息
 	handler, ok := w.logicMsgHandlerMap[MessageTypeText]

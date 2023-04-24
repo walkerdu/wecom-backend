@@ -88,13 +88,15 @@ func (c *Client) handleMessage(path string, rsp *http.Response) (MessageIF, erro
 }
 
 func (c *Client) handleChatMessage(rsp *http.Response) (MessageIF, error) {
+	log.Printf("[DEBUG][handleChatMessage] rsp Header:%v", rsp.Header)
+
 	rspBytes, err := ioutil.ReadAll(rsp.Body)
 	if err != nil {
 		log.Printf("[ERROR][handleChatMessage]ReadAll err=%s", err)
 		return nil, err
 	}
 
-	log.Printf("[DEBUG][handleChatMessage] rsp Body%s", rspBytes)
+	log.Printf("[DEBUG][handleChatMessage] rsp Body:%s", rspBytes)
 
 	var chatRsp ChatCompletionRsp
 	if err := json.Unmarshal(rspBytes, &chatRsp); nil != err {
