@@ -166,22 +166,33 @@ func (w *Wechat) handleTextMessage(wr http.ResponseWriter, req *http.Request, bo
 		return
 	}
 
-	w.mu.Lock()
-	if _, exist := w.concurrencyMsgMap[textMsg.MsgId]; exist {
-		err := fmt.Sprintf("message is processing now, please wait a moment, MsgId=%d, FromUserName=%s", textMsg.MsgId, textMsg.FromUserName)
-		log.Printf("[ERROR][handleTextMessage]%s", err)
+	// 并发检测，封装在一个闭包中，保证异常锁可以正常释放
+	concurrency_check_lmd := func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
 
-		http.Error(wr, err, http.StatusInternalServerError)
+		if _, exist := w.concurrencyMsgMap[textMsg.MsgId]; exist {
+			err := fmt.Sprintf("message is processing now, please wait a moment, MsgId=%d, FromUserName=%s", textMsg.MsgId, textMsg.FromUserName)
+			log.Printf("[ERROR][handleTextMessage]%s", err)
+
+			http.Error(wr, err, http.StatusInternalServerError)
+			return false
+		}
+
+		w.concurrencyMsgMap[textMsg.MsgId] = struct{}{}
+		return true
+	}
+
+	// 并发则返回
+	if !concurrency_check_lmd() {
 		return
 	}
 
-	w.concurrencyMsgMap[textMsg.MsgId] = struct{}{}
-	w.mu.Unlock()
-
+	// 保证处理完释放并发控制
 	defer func() {
 		w.mu.Lock()
+		defer w.mu.Unlock()
 		delete(w.concurrencyMsgMap, textMsg.MsgId)
-		w.mu.Unlock()
 	}()
 
 	// 调用处理器处理消息
