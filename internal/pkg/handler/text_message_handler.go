@@ -2,17 +2,25 @@ package handler
 
 import (
 	"log"
+	"strings"
+	"time"
 
 	"github.com/walkerdu/weixin-backend/internal/pkg/chatbot"
 	"github.com/walkerdu/weixin-backend/pkg/wechat"
 )
 
+const WeChatTimeOutSecs = 5
+
 func init() {
-	handler := &TextMessageHandler{}
+	handler := &TextMessageHandler{
+		rspMsgCache: make(map[string]string),
+	}
+
 	HandlerInst().RegisterLogicHandler(wechat.MessageTypeText, handler)
 }
 
 type TextMessageHandler struct {
+	rspMsgCache map[string]string // 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
 }
 
 func (t *TextMessageHandler) GetHandlerType() wechat.MessageType {
@@ -22,10 +30,25 @@ func (t *TextMessageHandler) GetHandlerType() wechat.MessageType {
 func (t *TextMessageHandler) HandleMessage(msg wechat.MessageIF) (wechat.MessageIF, error) {
 	textMsg := msg.(*wechat.TextMessageReq)
 
+	// 用户指令，直接从cache中读取
+	if strings.TrimSpace(textMsg.Content) == "继续" {
+		if cacheMsg, exist := t.rspMsgCache[textMsg.FromUserName]; !exist {
+			return &wechat.TextMessageRsp{Content: "nothing to continue"}, nil
+		} else {
+			return &wechat.TextMessageRsp{Content: cacheMsg}, nil
+		}
+	}
+
+	begin := time.Now().Unix()
 	chatRsp, err := chatbot.MustChatbot().GetResponse(textMsg.FromUserName, textMsg.Content)
 	if err != nil {
 		log.Printf("[ERROR][HandleMessage] chatbot.GetResponse failed, err=%s", err)
 		chatRsp = "chatbot something wrong, please contact owner"
+	}
+
+	if time.Now().Unix()-begin >= WeChatTimeOutSecs {
+		log.Printf("[WARN][HandleMessage] Response cost time too long, cache it, MsgId=%d", textMsg.MsgId)
+		t.rspMsgCache[textMsg.FromUserName] = chatRsp
 	}
 
 	textMsgRsp := wechat.TextMessageRsp{
