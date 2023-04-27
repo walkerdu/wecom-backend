@@ -108,10 +108,9 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 
 // GetResponse 调用聊天机器人API获取响应
 func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
-	cacheContent, _ := c.preHitProcess(userID, input)
-
 	// 用户指令，命中后，直接从cache中读取
 	if strings.TrimSpace(input) == "继续" {
+		cacheContent, _ := c.preHitProcess(userID, input)
 		if cacheContent != "" {
 			return cacheContent, nil
 		} else {
