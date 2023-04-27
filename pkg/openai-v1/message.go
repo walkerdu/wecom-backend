@@ -82,7 +82,12 @@ type ChatCompletionReq struct {
 type ChatCompletionChoice struct {
 	Index        int         `json:"index"`
 	Message      ChatMessage `json:"message"`
+	DeltaMessage ChatMessage `json:"delta"` // stream方式的回包结构
 	FinishReason string      `json:"finish_reason"`
+}
+
+func (c *ChatCompletionChoice) GetDeltaContent() string {
+	return c.DeltaMessage.Content
 }
 
 type ChatCompletionRsp struct {

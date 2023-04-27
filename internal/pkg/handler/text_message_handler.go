@@ -14,20 +14,19 @@ const WeChatTimeOutSecs = 5
 func init() {
 	handler := &TextMessageHandler{
 		// 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
-		rspMsgCache: make(map[string]struct {
-			content string // cache的回复内容
-			msgId   int64  // cache此回复对应的request的message ID
-		}),
+		rspMsgCacheMap: make(map[string]rspMsgCache),
 	}
 
 	HandlerInst().RegisterLogicHandler(wechat.MessageTypeText, handler)
 }
 
+type rspMsgCache struct {
+	content      string
+	msgId        int64
+	asyncMsgChan chan string
+}
 type TextMessageHandler struct {
-	rspMsgCache map[string]struct {
-		content string
-		msgId   int64
-	} // 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
+	rspMsgCacheMap map[string]rspMsgCache // 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
 }
 
 func (t *TextMessageHandler) GetHandlerType() wechat.MessageType {
@@ -39,15 +38,16 @@ func (t *TextMessageHandler) HandleMessage(msg wechat.MessageIF) (wechat.Message
 
 	// 用户指令，直接从cache中读取
 	if strings.TrimSpace(textMsg.Content) == "继续" {
-		if cacheMsg, exist := t.rspMsgCache[textMsg.FromUserName]; !exist {
+		if cacheMsg, exist := t.rspMsgCacheMap[textMsg.FromUserName]; !exist {
 			return &wechat.TextMessageRsp{Content: "nothing to continue"}, nil
 		} else {
-			delete(t.rspMsgCache, textMsg.FromUserName)
+			delete(t.rspMsgCacheMap, textMsg.FromUserName)
 			log.Printf("[INFO][HandleMessage] cache Response send to user, MsgId=%d", cacheMsg.msgId)
 			return &wechat.TextMessageRsp{Content: cacheMsg.content}, nil
 		}
 	}
 
+	//aysncMsgChan := make(chan string, 1)
 	begin := time.Now().Unix()
 	chatRsp, err := chatbot.MustChatbot().GetResponse(textMsg.FromUserName, textMsg.Content)
 	if err != nil {
@@ -57,10 +57,7 @@ func (t *TextMessageHandler) HandleMessage(msg wechat.MessageIF) (wechat.Message
 
 	if time.Now().Unix()-begin >= WeChatTimeOutSecs {
 		log.Printf("[WARN][HandleMessage] Response cost time too long, cache it, MsgId=%d", textMsg.MsgId)
-		t.rspMsgCache[textMsg.FromUserName] = struct {
-			content string
-			msgId   int64
-		}{
+		t.rspMsgCacheMap[textMsg.FromUserName] = rspMsgCache{
 			content: chatRsp,
 			msgId:   textMsg.MsgId,
 		}

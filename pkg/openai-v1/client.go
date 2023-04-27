@@ -3,6 +3,7 @@
 package openai
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,10 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 )
+
+const MaxStreamWaitTimeSecs = 60
 
 // OpenAI API客户端结构体
 type Client struct {
@@ -90,6 +94,55 @@ func (c *Client) handleMessage(path string, rsp *http.Response) (MessageIF, erro
 func (c *Client) handleChatMessage(rsp *http.Response) (MessageIF, error) {
 	log.Printf("[DEBUG][handleChatMessage] rsp Header:%v", rsp.Header)
 
+	var chatRsp ChatCompletionRsp
+
+	//Content-Type:[text/event-stream]
+	if rsp.Header.Get("Content-Type") == "text/event-stream" {
+		choice := ChatCompletionChoice{
+			DeltaMessage: ChatMessage{
+				Content: "OpenAI数据生成中，请稍后输入：\"继续\"，获取生成结果",
+			},
+		}
+
+		chatRsp.Choices = []ChatCompletionChoice{}
+		chatRsp.Choices = append(chatRsp.Choices, choice)
+
+		streamReader := streamReader{
+			reader:   bufio.NewReader(rsp.Body),
+			response: &ChatCompletionRsp{},
+		}
+
+		// 异步等待OpenAI后端推流
+		go func() {
+			begin := time.Now().Unix()
+			var asyncStream string
+
+			for !streamReader.isFinished {
+				if err := streamReader.Recv(); err != nil {
+					log.Printf("[ERROR][handleChatMessage] streamReader.Recv() error:%s", err)
+					break
+				}
+
+				// 收到一条推流
+				for _, choice := range streamReader.response.Choices {
+					asyncStream += choice.GetDeltaContent()
+				}
+
+				now := time.Now().Unix()
+				if now-begin >= MaxStreamWaitTimeSecs {
+					log.Printf("[ERROR][handleChatMessage] streamReader.Recv() timeout")
+					break
+				}
+			}
+
+			if streamReader.isFinished {
+				log.Printf("[DEBUG][handleChatMessage] streamReader.Recv() finish, full message:%v", asyncStream)
+			}
+		}()
+
+		return &chatRsp, nil
+	}
+
 	rspBytes, err := ioutil.ReadAll(rsp.Body)
 	if err != nil {
 		log.Printf("[ERROR][handleChatMessage]ReadAll err=%s", err)
@@ -98,7 +151,6 @@ func (c *Client) handleChatMessage(rsp *http.Response) (MessageIF, error) {
 
 	log.Printf("[DEBUG][handleChatMessage] rsp Body:%s", rspBytes)
 
-	var chatRsp ChatCompletionRsp
 	if err := json.Unmarshal(rspBytes, &chatRsp); nil != err {
 		log.Printf("[ERROR][handleChatMessage]Unmarshal failed err=%s", err)
 		return nil, err
