@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -23,7 +24,7 @@ type Client struct {
 	msgHandlerMap map[OpenAIPath]MessageHandler
 }
 
-type MessageHandler func(*http.Response) (MessageIF, error)
+type MessageHandler func(*http.Response, chan string) (MessageIF, error)
 
 // 创建一个新的OpenAI实例
 func NewClient(apiKey string) *Client {
@@ -43,7 +44,7 @@ func (c *Client) RegisterMessageHandler() {
 }
 
 // Post 发送HTTP POST请求到OpenAI API
-func (c *Client) Post(httpClient *http.Client, path string, requestBody []byte) (MessageIF, error) {
+func (c *Client) Post(httpClient *http.Client, path string, requestBody []byte, asyncMsgChan chan string) (MessageIF, error) {
 	log.Printf("[DEBUG][Post]requestBody %s", requestBody)
 
 	// 构造HTTP请求
@@ -66,6 +67,7 @@ func (c *Client) Post(httpClient *http.Client, path string, requestBody []byte) 
 		return nil, err
 	}
 
+	// 异步等待OpenAI后端推流,  需要延后关闭
 	if resp.Header.Get("Content-Type") != "text/event-stream" {
 		defer resp.Body.Close()
 	}
@@ -75,7 +77,7 @@ func (c *Client) Post(httpClient *http.Client, path string, requestBody []byte) 
 		return nil, errors.New("OpenAI API returned non-200 status code")
 	}
 
-	rspMsg, err := c.handleMessage(path, resp)
+	rspMsg, err := c.handleMessage(path, resp, asyncMsgChan)
 	if err != nil {
 		log.Printf("[ERROR][Post]handlerMessage err=%s", err)
 		return nil, err
@@ -84,16 +86,16 @@ func (c *Client) Post(httpClient *http.Client, path string, requestBody []byte) 
 	return rspMsg, nil
 }
 
-func (c *Client) handleMessage(path string, rsp *http.Response) (MessageIF, error) {
+func (c *Client) handleMessage(path string, rsp *http.Response, asyncMsgChan chan string) (MessageIF, error) {
 	if handler, ok := c.msgHandlerMap[OpenAIPath(path)]; !ok {
 		err := fmt.Errorf("Unsupported message type, path=%s", path)
 		return nil, err
 	} else {
-		return handler(rsp)
+		return handler(rsp, asyncMsgChan)
 	}
 }
 
-func (c *Client) handleChatMessage(rsp *http.Response) (MessageIF, error) {
+func (c *Client) handleChatMessage(rsp *http.Response, asyncMsgChan chan string) (MessageIF, error) {
 	log.Printf("[DEBUG][handleChatMessage] rsp Header:%v", rsp.Header)
 
 	var chatRsp ChatCompletionRsp
@@ -122,7 +124,7 @@ func (c *Client) handleChatMessage(rsp *http.Response) (MessageIF, error) {
 			var asyncStream string
 
 			for !streamReader.isFinished {
-				if err := streamReader.Recv(); err != nil {
+				if err := streamReader.Recv(); err != nil && err != io.EOF {
 					log.Printf("[ERROR][handleChatMessage] streamReader.Recv() error:%s", err)
 					break
 				}
@@ -141,6 +143,13 @@ func (c *Client) handleChatMessage(rsp *http.Response) (MessageIF, error) {
 
 			if streamReader.isFinished {
 				log.Printf("[DEBUG][handleChatMessage] streamReader.Recv() finish, full message:%v", asyncStream)
+			}
+
+			select {
+			case asyncMsgChan <- asyncStream:
+				log.Printf("[INFO][handleChatMessage] push stream into recv chan")
+			default:
+				log.Printf("[ERROR][handleChatMessage] push stream into recv chan failed")
 			}
 		}()
 
