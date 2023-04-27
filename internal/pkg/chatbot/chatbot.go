@@ -80,11 +80,10 @@ func (c *Chatbot) preHitProcess(userID string, input string) (string, error) {
 	case content := <-cache.asyncMsgChan:
 		cache.content = content
 		log.Printf("[INFO][PreProcess] cache hit async message userID=%s", userID)
+		delete(c.chatResponseCacheMap, userID)
 	default:
 		log.Printf("[DEBUG][PreProcess] cache not hit userID=%s", userID)
 	}
-
-	defer delete(c.chatResponseCacheMap, userID)
 
 	return cache.content, nil
 }
@@ -109,7 +108,6 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 
 // GetResponse 调用聊天机器人API获取响应
 func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
-
 	cacheContent, _ := c.preHitProcess(userID, input)
 
 	// 用户指令，命中后，直接从cache中读取
