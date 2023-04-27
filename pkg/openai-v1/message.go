@@ -99,3 +99,12 @@ type ChatCompletionRsp struct {
 	Choices []ChatCompletionChoice `json:"choices"`
 	Usage   Usage                  `json:"usage"`
 }
+
+func (c *ChatCompletionRsp) GetContent() string {
+	var content string
+	for _, choice := range c.Choices {
+		content += choice.Message.Content
+	}
+
+	return content
+}

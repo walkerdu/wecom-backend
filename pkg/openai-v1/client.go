@@ -66,7 +66,9 @@ func (c *Client) Post(httpClient *http.Client, path string, requestBody []byte) 
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	if resp.Header.Get("Content-Type") != "text/event-stream" {
+		defer resp.Body.Close()
+	}
 
 	// 检查HTTP响应状态码
 	if resp.StatusCode != http.StatusOK {
@@ -99,7 +101,7 @@ func (c *Client) handleChatMessage(rsp *http.Response) (MessageIF, error) {
 	//Content-Type:[text/event-stream]
 	if rsp.Header.Get("Content-Type") == "text/event-stream" {
 		choice := ChatCompletionChoice{
-			DeltaMessage: ChatMessage{
+			Message: ChatMessage{
 				Content: "OpenAI数据生成中，请稍后输入：\"继续\"，获取生成结果",
 			},
 		}
@@ -114,6 +116,8 @@ func (c *Client) handleChatMessage(rsp *http.Response) (MessageIF, error) {
 
 		// 异步等待OpenAI后端推流
 		go func() {
+			defer rsp.Body.Close()
+
 			begin := time.Now().Unix()
 			var asyncStream string
 

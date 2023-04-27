@@ -72,10 +72,5 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 		return "", err
 	}
 
-	var rspContent string
-	for _, choice := range chatRsp.Choices {
-		rspContent += choice.Message.Content
-	}
-
-	return rspContent, nil
+	return chatRsp.GetContent(), nil
 }
