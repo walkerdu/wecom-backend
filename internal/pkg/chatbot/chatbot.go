@@ -17,6 +17,7 @@ import (
 type chatResponseCache struct {
 	content      string
 	msgId        int64
+	begin        int64
 	asyncMsgChan chan string
 }
 
@@ -46,6 +47,19 @@ func NewChatbot(config *configs.Config) *Chatbot {
 
 func MustChatbot() *Chatbot {
 	return chatbot
+}
+
+func (c *Chatbot) isProcessing(userID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cache, exist := c.chatResponseCacheMap[userID]
+	if exist && cache.begin+600 < time.Now().Unix() {
+		delete(c.chatResponseCacheMap, userID)
+		return false
+	}
+
+	return exist
 }
 
 // 读取channel中异步推送的数据
@@ -85,6 +99,7 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 
 	cache := &chatResponseCache{
 		asyncMsgChan: make(chan string, 1),
+		begin:        time.Now().Unix(),
 	}
 
 	c.chatResponseCacheMap[userID] = cache
@@ -94,11 +109,18 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 
 // GetResponse 调用聊天机器人API获取响应
 func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
+
 	cacheContent, _ := c.preHitProcess(userID, input)
 
 	// 用户指令，命中后，直接从cache中读取
-	if strings.TrimSpace(input) == "继续" && cacheContent != "" {
-		return cacheContent, nil
+	if strings.TrimSpace(input) == "继续" {
+		if cacheContent != "" {
+			return cacheContent, nil
+		} else {
+			return "后台数据生成中，请稍后输入: \"继续\", 获取结果", nil
+		}
+	} else if c.isProcessing(userID) {
+		return "有提问在后台数据生成中，请稍后输入: \"继续\", 获取结果", nil
 	}
 
 	// 构造请求参数
