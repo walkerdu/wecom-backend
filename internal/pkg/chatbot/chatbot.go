@@ -3,6 +3,7 @@
 package chatbot
 
 import (
+	"container/list"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -14,6 +15,12 @@ import (
 	openai "github.com/walkerdu/weixin-backend/pkg/openai-v1"
 )
 
+const (
+	maxChatSessionCtxLength     = 6   // 聊天的最大会话长度
+	maxChatResponseCahceTimeout = 600 // 聊天回包保存的最大时效10min
+)
+
+// 保存用户聊天请求的对应的回包，因为可能是异步触发返回
 type chatResponseCache struct {
 	content      string
 	msgId        int64
@@ -21,10 +28,16 @@ type chatResponseCache struct {
 	asyncMsgChan chan string
 }
 
+type chatSessionCtx struct {
+	//chatHistory []*openai.ChatMessage // 保证OpenAI聊天具有上下文感知能力
+	chatHistory *list.List
+}
+
 // Chatbot 是聊天机器人结构体
 type Chatbot struct {
 	openaiClient         *openai.Client
 	chatResponseCacheMap map[string]*chatResponseCache // 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
+	chatSessionCtxMap    map[string]*chatSessionCtx    // 保存聊天的上下文
 	mu                   sync.Mutex
 }
 
@@ -54,7 +67,7 @@ func (c *Chatbot) isProcessing(userID string) bool {
 	defer c.mu.Unlock()
 
 	cache, exist := c.chatResponseCacheMap[userID]
-	if exist && cache.begin+600 < time.Now().Unix() {
+	if exist && cache.begin+maxChatResponseCahceTimeout < time.Now().Unix() {
 		delete(c.chatResponseCacheMap, userID)
 		return false
 	}
@@ -79,6 +92,8 @@ func (c *Chatbot) preHitProcess(userID string, input string) (string, error) {
 	select {
 	case content := <-cache.asyncMsgChan:
 		cache.content = content
+		c.AddChatSessionCtx(userID, content, false)
+
 		log.Printf("[INFO][PreProcess] cache hit async message userID=%s", userID)
 		delete(c.chatResponseCacheMap, userID)
 	default:
@@ -106,6 +121,55 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 	return cache
 }
 
+func (c *Chatbot) AddChatSessionCtx(userID string, content string, isUser bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var chatCtx *chatSessionCtx
+
+	chatCtx, exist := c.chatSessionCtxMap[userID]
+	if !exist {
+		chatCtx = &chatSessionCtx{
+			chatHistory: list.New(),
+		}
+
+		c.chatSessionCtxMap[userID] = chatCtx
+	}
+
+	if chatCtx.chatHistory.Len() >= maxChatSessionCtxLength {
+		chatCtx.chatHistory.Remove(chatCtx.chatHistory.Front())
+	}
+
+	message := &openai.ChatMessage{
+		Content: content,
+	}
+	if isUser {
+		message.Role = "user"
+	} else {
+		message.Role = "assistant"
+	}
+
+	chatCtx.chatHistory.PushBack(message)
+}
+
+func (c *Chatbot) GetChatSessionCtx(userID string, ctxs []openai.ChatMessage) []openai.ChatMessage {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	chatCtx, exist := c.chatSessionCtxMap[userID]
+	if !exist {
+		return ctxs
+	}
+
+	// 遍历队列中的元素
+	for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
+		msg, _ := e.Value.(*openai.ChatMessage)
+		ctxs = append(ctxs, *msg)
+	}
+
+	return ctxs
+}
+
 // GetResponse 调用聊天机器人API获取响应
 func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	// 用户指令，命中后，直接从cache中读取
@@ -121,14 +185,18 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	}
 
 	// 构造请求参数
-	chatMsg := openai.ChatMessage{
-		Role:    openai.User,
-		Content: input,
-	}
+	//chatMsg := openai.ChatMessage{
+	//	Role:    openai.User,
+	//	Content: input,
+	//}
+
+	c.AddChatSessionCtx(userID, input, true)
+	messages := make([]openai.ChatMessage, maxChatSessionCtxLength)
+	messages = c.GetChatSessionCtx(userID, messages)
 
 	req := &openai.ChatCompletionReq{
 		Model:    openai.Gpt35Turbo,
-		Messages: []openai.ChatMessage{chatMsg},
+		Messages: messages,
 		User:     userID,
 		Stream:   true,
 	}
