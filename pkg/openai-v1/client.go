@@ -123,6 +123,9 @@ func (c *Client) handleChatMessage(rsp *http.Response, asyncMsgChan chan string)
 			begin := time.Now().Unix()
 			var asyncStream string
 
+			log.Printf("[INFO][handleChatMessage] Ready to streamReader.Recv()")
+			firstRecv := false
+
 			for !streamReader.isFinished {
 				if err := streamReader.Recv(); err != nil && err != io.EOF {
 					log.Printf("[ERROR][handleChatMessage] streamReader.Recv() error:%s", err)
@@ -132,6 +135,10 @@ func (c *Client) handleChatMessage(rsp *http.Response, asyncMsgChan chan string)
 				// 收到一条推流
 				for _, choice := range streamReader.response.Choices {
 					asyncStream += choice.GetDeltaContent()
+					if !firstRecv {
+						firstRecv = true
+						log.Printf("[INFO][handleChatMessage] streamReader.Recv() first response, choice:%v", choice)
+					}
 				}
 
 				now := time.Now().Unix()
@@ -142,7 +149,7 @@ func (c *Client) handleChatMessage(rsp *http.Response, asyncMsgChan chan string)
 			}
 
 			if streamReader.isFinished {
-				log.Printf("[DEBUG][handleChatMessage] streamReader.Recv() finish, full message:%v", asyncStream)
+				log.Printf("[INFO][handleChatMessage] streamReader.Recv() finish, full message:%v", asyncStream)
 			}
 
 			select {
