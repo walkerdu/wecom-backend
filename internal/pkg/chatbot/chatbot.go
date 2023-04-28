@@ -38,7 +38,8 @@ type Chatbot struct {
 	openaiClient         *openai.Client
 	chatResponseCacheMap map[string]*chatResponseCache // 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
 	chatSessionCtxMap    map[string]*chatSessionCtx    // 保存聊天的上下文
-	mu                   sync.Mutex
+	rspCacheMu           sync.Mutex
+	sessionCtxMu         sync.Mutex
 }
 
 var chatbot *Chatbot
@@ -48,6 +49,7 @@ func NewChatbot(config *configs.Config) *Chatbot {
 	chatbot = &Chatbot{
 		// 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
 		chatResponseCacheMap: make(map[string]*chatResponseCache),
+		chatSessionCtxMap:    make(map[string]*chatSessionCtx),
 	}
 
 	if config.OpenAI.ApiKey != "" {
@@ -63,8 +65,8 @@ func MustChatbot() *Chatbot {
 }
 
 func (c *Chatbot) isProcessing(userID string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.rspCacheMu.Lock()
+	defer c.rspCacheMu.Unlock()
 
 	cache, exist := c.chatResponseCacheMap[userID]
 	if exist && cache.begin+maxChatResponseCahceTimeout < time.Now().Unix() {
@@ -77,8 +79,8 @@ func (c *Chatbot) isProcessing(userID string) bool {
 
 // 读取channel中异步推送的数据
 func (c *Chatbot) preHitProcess(userID string, input string) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.rspCacheMu.Lock()
+	defer c.rspCacheMu.Unlock()
 
 	cache, exist := c.chatResponseCacheMap[userID]
 	if !exist {
@@ -104,8 +106,8 @@ func (c *Chatbot) preHitProcess(userID string, input string) (string, error) {
 }
 
 func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.rspCacheMu.Lock()
+	defer c.rspCacheMu.Unlock()
 
 	if cache, exist := c.chatResponseCacheMap[userID]; exist {
 		return cache
@@ -122,8 +124,8 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 }
 
 func (c *Chatbot) AddChatSessionCtx(userID string, content string, isUser bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.sessionCtxMu.Lock()
+	defer c.sessionCtxMu.Unlock()
 
 	var chatCtx *chatSessionCtx
 
@@ -153,8 +155,8 @@ func (c *Chatbot) AddChatSessionCtx(userID string, content string, isUser bool) 
 }
 
 func (c *Chatbot) GetChatSessionCtx(userID string, ctxs []openai.ChatMessage) []openai.ChatMessage {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.sessionCtxMu.Lock()
+	defer c.sessionCtxMu.Unlock()
 
 	chatCtx, exist := c.chatSessionCtxMap[userID]
 	if !exist {
@@ -191,7 +193,7 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	//}
 
 	c.AddChatSessionCtx(userID, input, true)
-	messages := make([]openai.ChatMessage, maxChatSessionCtxLength)
+	messages := []openai.ChatMessage{}
 	messages = c.GetChatSessionCtx(userID, messages)
 
 	req := &openai.ChatCompletionReq{
