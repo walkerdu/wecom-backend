@@ -8,38 +8,38 @@ package handler
 import (
 	"sync"
 
-	"github.com/walkerdu/weixin-backend/pkg/wechat"
+	"github.com/walkerdu/wecom-backend/pkg/wecom"
 )
 
 var once sync.Once
 var handler *Handler
 
 type LogicHandler interface {
-	GetHandlerType() wechat.MessageType
-	HandleMessage(wechat.MessageIF) (wechat.MessageIF, error)
+	GetHandlerType() wecom.MessageType
+	HandleMessage(wecom.MessageIF) (wecom.MessageIF, error)
 }
 
 // Handler 是所有HTTP处理器的基础结构体
 type Handler struct {
 	//middleware.AuthMiddleware
-	logicHandlerMap map[wechat.MessageType]LogicHandler
+	logicHandlerMap map[wecom.MessageType]LogicHandler
 }
 
 // NewHandler 返回一个新的Handler实例
 func HandlerInst() *Handler {
 	once.Do(func() {
 		handler = &Handler{
-			logicHandlerMap: make(map[wechat.MessageType]LogicHandler),
+			logicHandlerMap: make(map[wecom.MessageType]LogicHandler),
 		}
 	})
 
 	return handler
 }
 
-func (h *Handler) RegisterLogicHandler(msgType wechat.MessageType, logicHandler LogicHandler) {
+func (h *Handler) RegisterLogicHandler(msgType wecom.MessageType, logicHandler LogicHandler) {
 	h.logicHandlerMap[msgType] = logicHandler
 }
 
-func (h *Handler) GetLogicHandlerMap() map[wechat.MessageType]LogicHandler {
+func (h *Handler) GetLogicHandlerMap() map[wecom.MessageType]LogicHandler {
 	return h.logicHandlerMap
 }

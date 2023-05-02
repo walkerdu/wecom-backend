@@ -3,8 +3,8 @@ package handler
 import (
 	"log"
 
-	"github.com/walkerdu/weixin-backend/internal/pkg/chatbot"
-	"github.com/walkerdu/weixin-backend/pkg/wechat"
+	"github.com/walkerdu/wecom-backend/internal/pkg/chatbot"
+	"github.com/walkerdu/wecom-backend/pkg/wecom"
 )
 
 const WeChatTimeOutSecs = 5
@@ -12,18 +12,18 @@ const WeChatTimeOutSecs = 5
 func init() {
 	handler := &TextMessageHandler{}
 
-	HandlerInst().RegisterLogicHandler(wechat.MessageTypeText, handler)
+	HandlerInst().RegisterLogicHandler(wecom.MessageTypeText, handler)
 }
 
 type TextMessageHandler struct {
 }
 
-func (t *TextMessageHandler) GetHandlerType() wechat.MessageType {
-	return wechat.MessageTypeText
+func (t *TextMessageHandler) GetHandlerType() wecom.MessageType {
+	return wecom.MessageTypeText
 }
 
-func (t *TextMessageHandler) HandleMessage(msg wechat.MessageIF) (wechat.MessageIF, error) {
-	textMsg := msg.(*wechat.TextMessageReq)
+func (t *TextMessageHandler) HandleMessage(msg wecom.MessageIF) (wecom.MessageIF, error) {
+	textMsg := msg.(*wecom.TextMessageReq)
 
 	chatRsp, err := chatbot.MustChatbot().GetResponse(textMsg.FromUserName, textMsg.Content)
 	if err != nil {
@@ -31,7 +31,7 @@ func (t *TextMessageHandler) HandleMessage(msg wechat.MessageIF) (wechat.Message
 		chatRsp = "chatbot something wrong, please contact owner"
 	}
 
-	textMsgRsp := wechat.TextMessageRsp{
+	textMsgRsp := wecom.TextMessageRsp{
 		Content: chatRsp,
 	}
 

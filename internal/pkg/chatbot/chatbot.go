@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/walkerdu/weixin-backend/configs"
-	openai "github.com/walkerdu/weixin-backend/pkg/openai-v1"
+	"github.com/walkerdu/wecom-backend/configs"
+	openai "github.com/walkerdu/wecom-backend/pkg/openai-v1"
 )
 
 const (

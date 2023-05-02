@@ -8,19 +8,20 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/walkerdu/weixin-backend/configs"
-	"github.com/walkerdu/weixin-backend/internal/pkg/chatbot"
-	"github.com/walkerdu/weixin-backend/internal/pkg/service"
+	"github.com/walkerdu/wecom-backend/configs"
+	"github.com/walkerdu/wecom-backend/internal/pkg/chatbot"
+	"github.com/walkerdu/wecom-backend/internal/pkg/service"
 )
 
 var (
 	usage = `Usage: %s [options] [URL...]
 Options:
-	--appid <wechat appid>
-	--app_secret <wechat app secret>
-	--token <wechat token>
-	--encoding_key <wechat encoding key>
-	--addr <wechat listen addr>
+	--corp_id <wecom corpID>
+	--agent_id <wecom agent id>
+	--agent_secret <wecom agent secret>
+	--agent_token <wecom agent token>
+	--agent_encoding_aes_key <wecom agent encoding aes key>
+	--addr <wecom listen addr>
 	--openai_apikey <openai api key>
 `
 	Usage = func() {
@@ -38,11 +39,12 @@ func main() {
 
 	config := &configs.Config{}
 
-	flag.StringVar(&config.Wechat.AppID, "appid", "", "wechat appid")
-	flag.StringVar(&config.Wechat.AppSecret, "app_secret", "", "wechat app secret")
-	flag.StringVar(&config.Wechat.Token, "token", "", "wechat token")
-	flag.StringVar(&config.Wechat.EncodingKey, "encoding_key", "", "wechat encoding key")
-	flag.StringVar(&config.Wechat.Addr, "addr", ":80", "wechat listen addr")
+	flag.StringVar(&config.Wecom.CorpID, "corp_id", "", "wecom corporation id")
+	flag.StringVar(&config.Wecom.AgentID, "agent_id", "", "wecom agent id")
+	flag.StringVar(&config.Wecom.AgentSecret, "agent_secret", "", "wecom agent secret")
+	flag.StringVar(&config.Wecom.AgentToken, "agent_token", "", "wecom agent token")
+	flag.StringVar(&config.Wecom.AgentEncodingAESKey, "agent_encoding_aes_key", "", "wecom agent encoding aes key")
+	flag.StringVar(&config.Wecom.Addr, "addr", ":80", "wecom listen addr")
 
 	flag.StringVar(&config.OpenAI.ApiKey, "openai_apikey", "", "openai api key")
 
@@ -52,7 +54,7 @@ func main() {
 
 	chatbot.NewChatbot(config)
 
-	ws, err := service.NewWeChatServer(&config.Wechat)
+	ws, err := service.NewWeComServer(&config.Wecom)
 	if err != nil {
 		log.Fatal("[ALERT] NewWeChatServer() failed")
 	}

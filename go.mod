@@ -1,3 +1,3 @@
-module github.com/walkerdu/weixin-backend
+module github.com/walkerdu/wecom-backend
 
 go 1.16
