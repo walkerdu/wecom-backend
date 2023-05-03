@@ -87,21 +87,6 @@ func (c *Chatbot) preHitProcess(userID string, input string) (string, error) {
 		return "", nil
 	}
 
-	if cache.content != "" {
-		return cache.content, nil
-	}
-
-	select {
-	case content := <-cache.asyncMsgChan:
-		cache.content = content
-		c.AddChatSessionCtx(userID, content, false)
-
-		log.Printf("[INFO][PreProcess] cache hit async message userID=%s", userID)
-		delete(c.chatResponseCacheMap, userID)
-	default:
-		log.Printf("[DEBUG][PreProcess] cache not hit userID=%s", userID)
-	}
-
 	return cache.content, nil
 }
 
@@ -110,6 +95,7 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 	defer c.rspCacheMu.Unlock()
 
 	if cache, exist := c.chatResponseCacheMap[userID]; exist {
+		cache.begin = time.Now().Unix()
 		return cache
 	}
 
@@ -121,6 +107,32 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 	c.chatResponseCacheMap[userID] = cache
 
 	return cache
+}
+
+func (c *Chatbot) WaitChatResponse(userID string) {
+	c.rspCacheMu.Lock()
+
+	cache, exist := c.chatResponseCacheMap[userID]
+	if !exist {
+		log.Printf("[ERROR]WaitChatResponse|cache not exist userID=%s", userID)
+	}
+	c.rspCacheMu.Unlock()
+
+	go func() {
+		select {
+		case content := <-cache.asyncMsgChan:
+			// 保存聊天上下文
+			// TODO: 存入DB
+			c.AddChatSessionCtx(userID, content, false)
+			log.Printf("[INFO]WaitChatResponse|userID=%s wait sucess", userID)
+
+			// 消息推送
+
+			delete(c.chatResponseCacheMap, userID)
+		case <-time.After(60 * time.Second):
+			log.Printf("[WARN]WaitChatResponse|timeout, userID=%s", userID)
+		}
+	}()
 }
 
 func (c *Chatbot) AddChatSessionCtx(userID string, content string, isUser bool) {

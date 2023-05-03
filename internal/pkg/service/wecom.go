@@ -13,7 +13,7 @@ import (
 
 type WeComServer struct {
 	httpSvr *http.Server
-	wx      *wecom.Wecom
+	wx      *wecom.WeCom
 }
 
 func NewWeComServer(config *configs.WeComConfig) (*WeComServer, error) {
@@ -22,7 +22,7 @@ func NewWeComServer(config *configs.WeComConfig) (*WeComServer, error) {
 	svr := &WeComServer{}
 
 	// 初始化微信公众号API
-	svr.wx = wecom.NewWecom(config.CorpID, config.AgentID, config.AgentSecret, config.AgentToken, config.AgentEncodingAESKey)
+	svr.wx = wecom.NewWeCom(config.CorpID, config.AgentID, config.AgentSecret, config.AgentToken, config.AgentEncodingAESKey)
 
 	mux := http.NewServeMux()
 	mux.Handle("/wecom", svr.wx)

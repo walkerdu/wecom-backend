@@ -1,7 +1,10 @@
 package wecom
 
 import (
+	"bytes"
+	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -11,7 +14,7 @@ import (
 	"time"
 )
 
-type Wecom struct {
+type WeCom struct {
 	corpID              string
 	agentID             string
 	agentSecret         string
@@ -20,8 +23,12 @@ type Wecom struct {
 
 	msgHandlerMap      map[MessageType]MessageHandler      // 注册各个消息类型对应的逻辑处理Handler
 	logicMsgHandlerMap map[MessageType]LogicMessageHandler // 注册各个消息类型对应的业务逻辑处理Handler
-	concurrencyMsgMap  map[int64]struct{}                  // 按照MsgId防并发
-	mu                 sync.Mutex
+
+	concurrencyMsgMap map[int64]struct{} // 按照MsgId防并发
+	mu                sync.Mutex
+
+	accessToken      string
+	tokenExpiredTime int64
 
 	cryptoHelper *WXBizMsgCrypt // 消息加解密工具类
 }
@@ -30,17 +37,18 @@ type MessageHandler func(wr http.ResponseWriter, req *http.Request, body []byte,
 
 type LogicMessageHandler func(MessageIF) (MessageIF, error)
 
-// NewWecom 返回一个新的Wecom实例
-func NewWecom(corpID, agentID, agentSecret, agentToken, agentEncodingAESKey string) *Wecom {
-	w := &Wecom{
+// NewWeCom 返回一个新的WeCom实例
+func NewWeCom(corpID, agentID, agentSecret, agentToken, agentEncodingAESKey string) *WeCom {
+	w := &WeCom{
 		corpID:              corpID,
 		agentID:             agentID,
 		agentSecret:         agentSecret,
 		agentToken:          agentToken,
 		agentEncodingAESKey: agentEncodingAESKey,
-		msgHandlerMap:       make(map[MessageType]MessageHandler),
-		logicMsgHandlerMap:  make(map[MessageType]LogicMessageHandler),
-		concurrencyMsgMap:   make(map[int64]struct{}),
+
+		msgHandlerMap:      make(map[MessageType]MessageHandler),
+		logicMsgHandlerMap: make(map[MessageType]LogicMessageHandler),
+		concurrencyMsgMap:  make(map[int64]struct{}),
 	}
 
 	w.cryptoHelper = NewWXBizMsgCrypt(agentToken, agentEncodingAESKey, corpID, XmlType)
@@ -50,12 +58,12 @@ func NewWecom(corpID, agentID, agentSecret, agentToken, agentEncodingAESKey stri
 	return w
 }
 
-func (w *Wecom) RegisterLogicMsgHandler(msgType MessageType, handler LogicMessageHandler) {
+func (w *WeCom) RegisterLogicMsgHandler(msgType MessageType, handler LogicMessageHandler) {
 	w.logicMsgHandlerMap[msgType] = handler
 }
 
 // registerMsgHandler 注册消息的处理器
-func (w *Wecom) registerMsgHandler() {
+func (w *WeCom) registerMsgHandler() {
 	w.msgHandlerMap[MessageTypeText] = w.handleTextMessage
 	w.msgHandlerMap[MessageTypeImage] = w.handleImageMessage
 	w.msgHandlerMap[MessageTypeVoice] = w.handleVoiceMessage
@@ -66,7 +74,7 @@ func (w *Wecom) registerMsgHandler() {
 }
 
 // ServeHTTP 实现http.Handler接口
-func (w *Wecom) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
+func (w *WeCom) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	log.Printf("[DEBUG]ServeHttp|recv request URL:%s, Method:%s", req.URL, req.Method)
 
 	query := req.URL.Query()
@@ -109,7 +117,7 @@ func (w *Wecom) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 }
 
 // handleMessageRequest 处理微信公众号的消息请求
-func (w *Wecom) handleMessageRequest(wr http.ResponseWriter, req *http.Request, msgBody []byte) {
+func (w *WeCom) handleMessageRequest(wr http.ResponseWriter, req *http.Request, msgBody []byte) {
 	// 解析XML消息
 	var msg MessageReq
 	err := xml.Unmarshal(msgBody, &msg)
@@ -135,7 +143,7 @@ func (w *Wecom) handleMessageRequest(wr http.ResponseWriter, req *http.Request, 
 }
 
 // handleTextMessage 处理文本消息
-func (w *Wecom) handleTextMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
+func (w *WeCom) handleTextMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 解析文本消息
 	var textMsg TextMessageReq
 	err := xml.Unmarshal(body, &textMsg)
@@ -213,30 +221,135 @@ func (w *Wecom) handleTextMessage(wr http.ResponseWriter, req *http.Request, bod
 	fmt.Fprintf(wr, string(encryptMsg))
 }
 
-func (w *Wecom) handleImageMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
+func (w *WeCom) handleImageMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理图片消息
 }
 
-func (w *Wecom) handleVoiceMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
+func (w *WeCom) handleVoiceMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理语音消息
 }
 
-func (w *Wecom) handleVideoMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
+func (w *WeCom) handleVideoMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理视频消息
 }
 
-func (w *Wecom) handleShortVideoMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
+func (w *WeCom) handleShortVideoMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理短视频消息
 }
 
-func (w *Wecom) handleLocationMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
+func (w *WeCom) handleLocationMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理位置消息
 }
 
-func (w *Wecom) handleLinkMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
+func (w *WeCom) handleLinkMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理链接消息
 }
 
-func (w *Wecom) handleEventMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
+func (w *WeCom) handleEventMessage(wr http.ResponseWriter, req *http.Request, body []byte, msg MessageIF) {
 	// 处理事件消息
+}
+
+// 获取Access Token信息
+func (w *WeCom) getAccessToken() string {
+	type AccessToken struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+		ErrCode     int64  `json:"errcode,omitempty"`
+		ErrMsg      string `json:"errmsg,omitempty"`
+	}
+
+	if w.tokenExpiredTime > time.Now().Unix() {
+		return w.accessToken
+	}
+
+	// 请求获取 access token 的 API 地址及参数
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=%s&corpsecret=%s", w.corpID, w.agentSecret)
+
+	// 发送 GET 请求获取 access token
+	res, err := http.Get(url)
+	if err != nil {
+		log.Printf("[ERROR]getAccessToken|http Get failed, err:%s", err)
+		return ""
+	}
+	defer res.Body.Close()
+
+	// 读取返回结果中的信息
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Printf("[ERROR]getAccessToken|ReadAll failed, err:%s", err)
+		return ""
+	}
+
+	log.Printf("[INFO]getAccessToken|res Body:%s", body)
+
+	// 将返回结果中的 JSON 数据解析到 AccessToken 结构体中
+	var accessToken AccessToken
+	if err := json.Unmarshal(body, &accessToken); err != nil {
+		log.Printf("[ERROR]getAccessToken|json Unmarshal failed, err:%s", err)
+		return ""
+	}
+
+	// 判断是否获取 access token 成功
+	if accessToken.ErrCode != 0 {
+		log.Printf("[ERROR]getAccessToken|Failed to get access token, errcode: %d, errmsg: %s", accessToken.ErrCode, accessToken.ErrMsg)
+		return ""
+	}
+
+	w.accessToken = accessToken.AccessToken
+	w.tokenExpiredTime = time.Now().Unix() + accessToken.ExpiresIn
+
+	return w.accessToken
+}
+
+// PushTextMessage 推送文本消息
+func (w *WeCom) PushTextMessage(msg *TextPushMessage) error {
+	accessToken := w.getAccessToken()
+	if accessToken == "" {
+		err := errors.New("access token is invalid")
+		log.Printf("[ERROR]PushTextMessage|getAccessToken failed, err:%s", err)
+		return err
+	}
+
+	// 消息发送接口的 API 地址
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=%s", accessToken)
+
+	// 将消息转为 JSON 格式
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("[ERROR]PushTextMessage|json Marshal failed, err:%s", err)
+		return err
+	}
+
+	// 发送 POST 请求推送消息
+	res, err := http.Post(url, "application/json", bytes.NewReader(msgBytes))
+	if err != nil {
+		log.Printf("[ERROR]PushTextMessage|http Post failed, err:%s", err)
+		return err
+	}
+	defer res.Body.Close()
+
+	// 读取返回结果中的信息
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Printf("[ERROR]PushTextMessage|ReadAll failed, err:%s", err)
+		return err
+	}
+
+	// 解析返回结果中的 JSON 数据
+	var msgRsp PushMessageRsp
+	if err := json.Unmarshal(body, &msgRsp); err != nil {
+		log.Printf("[ERROR]PushTextMessage|json Unmarshal failed, err:%s", err)
+		return err
+	}
+
+	// 判断是否推送消息成功
+	if msgRsp.ErrCode != 0 {
+		err := fmt.Errorf("PushTextMessage|return error, errcode: %d, errmsg: %s", msgRsp.ErrCode, msgRsp.ErrMsg)
+		log.Printf("[ERROR]|:%s", err)
+		return err
+	}
+
+	log.Printf("[INFO]|PushTextMessage success, message:%s", msgBytes)
+
+	return nil
 }

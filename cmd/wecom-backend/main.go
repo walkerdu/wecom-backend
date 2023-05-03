@@ -56,7 +56,7 @@ func main() {
 
 	ws, err := service.NewWeComServer(&config.Wecom)
 	if err != nil {
-		log.Fatal("[ALERT] NewWeChatServer() failed")
+		log.Fatal("[ALERT] NewWeComServer() failed")
 	}
 
 	log.Printf("[INFO] start Serve()")
