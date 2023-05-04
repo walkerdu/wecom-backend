@@ -31,6 +31,8 @@ Options:
 )
 
 func main() {
+	log.SetFlags(log.Lshortfile | log.LstdFlags | log.Lmicroseconds)
+
 	flag.Usage = Usage
 	if len(os.Args) <= 1 {
 		flag.Usage()

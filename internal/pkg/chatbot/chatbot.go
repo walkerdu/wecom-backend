@@ -152,7 +152,8 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 			}
 
 			if err := c.publisher(pushMsg); err != nil {
-				log.Printf("[ERROR]WaitChatResponse|publisher message failed, userID=%s, err=%s", userID, err)
+				log.Printf("[ERROR]WaitChatResponse|publish message failed, userID=%s, err=%s", userID, err)
+				cache.content = content
 				return
 			}
 
@@ -221,10 +222,10 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 			delete(c.chatResponseCacheMap, userID)
 			return cacheContent, nil
 		} else {
-			return "后台数据生成中，请稍后输入: \"继续\", 获取结果", nil
+			return "后台数据生成中，请稍后, 生成完成会进行推送, 也可输入:\"继续\", 获取结果", nil
 		}
 	} else if c.isProcessing(userID) {
-		return "有提问在后台数据生成中，请稍后输入: \"继续\", 获取结果", nil
+		return "有提问在后台数据生成中，请稍后, 生成完成会进行推送, 也可输入:\"继续\", 获取结果", nil
 	}
 
 	// 构造请求参数
