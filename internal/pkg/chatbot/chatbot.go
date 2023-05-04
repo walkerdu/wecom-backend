@@ -13,6 +13,7 @@ import (
 
 	"github.com/walkerdu/wecom-backend/configs"
 	openai "github.com/walkerdu/wecom-backend/pkg/openai-v1"
+	"github.com/walkerdu/wecom-backend/pkg/wecom"
 )
 
 const (
@@ -35,10 +36,14 @@ type chatSessionCtx struct {
 
 // Chatbot 是聊天机器人结构体
 type Chatbot struct {
-	openaiClient         *openai.Client
+	openaiClient *openai.Client
+
+	publisher func(*wecom.TextPushMessage) error
+	agentID   int // TODO wecom是按照应用来接入的，这样要重新设计一下动态支持多个agentID
+
 	chatResponseCacheMap map[string]*chatResponseCache // 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
-	chatSessionCtxMap    map[string]*chatSessionCtx    // 保存聊天的上下文
 	rspCacheMu           sync.Mutex
+	chatSessionCtxMap    map[string]*chatSessionCtx // 保存聊天的上下文
 	sessionCtxMu         sync.Mutex
 }
 
@@ -50,6 +55,8 @@ func NewChatbot(config *configs.Config) *Chatbot {
 		// 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
 		chatResponseCacheMap: make(map[string]*chatResponseCache),
 		chatSessionCtxMap:    make(map[string]*chatSessionCtx),
+
+		agentID: config.WeCom.AgentID,
 	}
 
 	if config.OpenAI.ApiKey != "" {
@@ -109,6 +116,10 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 	return cache
 }
 
+func (c *Chatbot) RegsiterMessagePublish(publisher func(*wecom.TextPushMessage) error) {
+	c.publisher = publisher
+}
+
 func (c *Chatbot) WaitChatResponse(userID string) {
 	c.rspCacheMu.Lock()
 
@@ -127,6 +138,23 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 			log.Printf("[INFO]WaitChatResponse|userID=%s wait sucess", userID)
 
 			// 消息推送
+			pushMsg := &wecom.TextPushMessage{
+				PushMessage: wecom.PushMessage{
+					ToUser:  userID,
+					MsgType: wecom.MessageTypeText,
+					AgentID: 1,
+				},
+				Text: struct {
+					Content string `json:"content"` // 文本消息内容
+				}{
+					Content: content,
+				},
+			}
+
+			if err := c.publisher(pushMsg); err != nil {
+				log.Printf("[ERROR]WaitChatResponse|publisher message failed, userID=%s, err=%s", userID, err)
+				return
+			}
 
 			delete(c.chatResponseCacheMap, userID)
 		case <-time.After(60 * time.Second):
@@ -190,6 +218,7 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	if strings.TrimSpace(input) == "继续" {
 		cacheContent, _ := c.preHitProcess(userID, input)
 		if cacheContent != "" {
+			delete(c.chatResponseCacheMap, userID)
 			return cacheContent, nil
 		} else {
 			return "后台数据生成中，请稍后输入: \"继续\", 获取结果", nil
@@ -239,6 +268,8 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 		log.Printf("[ERROR]GetResponse] rsp invalid rsp:%v", rsp)
 		return "", err
 	}
+
+	c.WaitChatResponse(userID)
 
 	return chatRsp.GetContent(), nil
 }

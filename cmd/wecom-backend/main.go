@@ -39,12 +39,12 @@ func main() {
 
 	config := &configs.Config{}
 
-	flag.StringVar(&config.Wecom.CorpID, "corp_id", "", "wecom corporation id")
-	flag.StringVar(&config.Wecom.AgentID, "agent_id", "", "wecom agent id")
-	flag.StringVar(&config.Wecom.AgentSecret, "agent_secret", "", "wecom agent secret")
-	flag.StringVar(&config.Wecom.AgentToken, "agent_token", "", "wecom agent token")
-	flag.StringVar(&config.Wecom.AgentEncodingAESKey, "agent_encoding_aes_key", "", "wecom agent encoding aes key")
-	flag.StringVar(&config.Wecom.Addr, "addr", ":80", "wecom listen addr")
+	flag.StringVar(&config.WeCom.CorpID, "corp_id", "", "wecom corporation id")
+	flag.IntVar(&config.WeCom.AgentID, "agent_id", 0, "wecom agent id")
+	flag.StringVar(&config.WeCom.AgentSecret, "agent_secret", "", "wecom agent secret")
+	flag.StringVar(&config.WeCom.AgentToken, "agent_token", "", "wecom agent token")
+	flag.StringVar(&config.WeCom.AgentEncodingAESKey, "agent_encoding_aes_key", "", "wecom agent encoding aes key")
+	flag.StringVar(&config.WeCom.Addr, "addr", ":80", "wecom listen addr")
 
 	flag.StringVar(&config.OpenAI.ApiKey, "openai_apikey", "", "openai api key")
 
@@ -54,7 +54,7 @@ func main() {
 
 	chatbot.NewChatbot(config)
 
-	ws, err := service.NewWeComServer(&config.Wecom)
+	ws, err := service.NewWeComServer(&config.WeCom)
 	if err != nil {
 		log.Fatal("[ALERT] NewWeComServer() failed")
 	}

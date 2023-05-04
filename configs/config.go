@@ -8,7 +8,7 @@ type OpenAIConfig struct {
 // 企业微信配置
 type WeComConfig struct {
 	CorpID              string
-	AgentID             string
+	AgentID             int
 	AgentSecret         string
 	AgentToken          string
 	AgentEncodingAESKey string
@@ -17,5 +17,5 @@ type WeComConfig struct {
 
 type Config struct {
 	OpenAI OpenAIConfig
-	Wecom  WeComConfig
+	WeCom  WeComConfig
 }

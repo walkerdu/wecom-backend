@@ -16,7 +16,7 @@ import (
 
 type WeCom struct {
 	corpID              string
-	agentID             string
+	agentID             int
 	agentSecret         string
 	agentToken          string
 	agentEncodingAESKey string
@@ -38,7 +38,7 @@ type MessageHandler func(wr http.ResponseWriter, req *http.Request, body []byte,
 type LogicMessageHandler func(MessageIF) (MessageIF, error)
 
 // NewWeCom 返回一个新的WeCom实例
-func NewWeCom(corpID, agentID, agentSecret, agentToken, agentEncodingAESKey string) *WeCom {
+func NewWeCom(corpID string, agentID int, agentSecret, agentToken, agentEncodingAESKey string) *WeCom {
 	w := &WeCom{
 		corpID:              corpID,
 		agentID:             agentID,
