@@ -142,7 +142,7 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 				PushMessage: wecom.PushMessage{
 					ToUser:  userID,
 					MsgType: wecom.MessageTypeText,
-					AgentID: 1,
+					AgentID: c.agentID,
 				},
 				Text: struct {
 					Content string `json:"content"` // 文本消息内容
@@ -151,11 +151,15 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 				},
 			}
 
+			log.Printf("[DEBUG]|WaitChatResponse|ready to push test message :%v", pushMsg)
+
 			if err := c.publisher(pushMsg); err != nil {
 				log.Printf("[ERROR]WaitChatResponse|publish message failed, userID=%s, err=%s", userID, err)
 				cache.content = content
 				return
 			}
+
+			log.Printf("[INFO]|PushTextMessage success, userID:%s", userID)
 
 			delete(c.chatResponseCacheMap, userID)
 		case <-time.After(60 * time.Second):
@@ -222,10 +226,10 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 			delete(c.chatResponseCacheMap, userID)
 			return cacheContent, nil
 		} else {
-			return "后台数据生成中，请稍后, 生成完成会进行推送, 也可输入:\"继续\", 获取结果", nil
+			return "后台数据生成中，请稍后，生成完成会进行推送~\n也可输入:\"继续\"，获取结果", nil
 		}
 	} else if c.isProcessing(userID) {
-		return "有提问在后台数据生成中，请稍后, 生成完成会进行推送, 也可输入:\"继续\", 获取结果", nil
+		return "有提问在后台数据生成中，请稍后，生成完成会进行推送~\n也可输入:\"继续\"，获取结果", nil
 	}
 
 	// 构造请求参数

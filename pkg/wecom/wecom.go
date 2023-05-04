@@ -349,7 +349,5 @@ func (w *WeCom) PushTextMessage(msg *TextPushMessage) error {
 		return err
 	}
 
-	log.Printf("[INFO]|PushTextMessage success, message:%s", msgBytes)
-
 	return nil
 }
