@@ -23,7 +23,7 @@ func NewWeComServer(config *configs.WeComConfig) (*WeComServer, error) {
 	svr := &WeComServer{}
 
 	// 初始化微信公众号API
-	svr.wx = wecom.NewWeCom(config.CorpID, config.AgentID, config.AgentSecret, config.AgentToken, config.AgentEncodingAESKey)
+	svr.wx = wecom.NewWeCom(&config.AgentConfig)
 
 	mux := http.NewServeMux()
 	mux.Handle("/wecom", svr.wx)
@@ -36,7 +36,7 @@ func NewWeComServer(config *configs.WeComConfig) (*WeComServer, error) {
 	svr.InitHandler()
 
 	// 注册聊天消息的异步推送回调
-	chatbot.MustChatbot().RegsiterMessagePublish(svr.wx.PushTextMessage)
+	chatbot.MustChatbot().RegsiterMessagePublish(svr.wx.TextMessagePusher)
 
 	return svr, nil
 }

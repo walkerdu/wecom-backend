@@ -38,20 +38,20 @@ type MessageHandler func(wr http.ResponseWriter, req *http.Request, body []byte,
 type LogicMessageHandler func(MessageIF) (MessageIF, error)
 
 // NewWeCom 返回一个新的WeCom实例
-func NewWeCom(corpID string, agentID int, agentSecret, agentToken, agentEncodingAESKey string) *WeCom {
+func NewWeCom(config *AgentConfig) *WeCom {
 	w := &WeCom{
-		corpID:              corpID,
-		agentID:             agentID,
-		agentSecret:         agentSecret,
-		agentToken:          agentToken,
-		agentEncodingAESKey: agentEncodingAESKey,
+		corpID:              config.CorpID,
+		agentID:             config.AgentID,
+		agentSecret:         config.AgentSecret,
+		agentToken:          config.AgentToken,
+		agentEncodingAESKey: config.AgentEncodingAESKey,
 
 		msgHandlerMap:      make(map[MessageType]MessageHandler),
 		logicMsgHandlerMap: make(map[MessageType]LogicMessageHandler),
 		concurrencyMsgMap:  make(map[int64]struct{}),
 	}
 
-	w.cryptoHelper = NewWXBizMsgCrypt(agentToken, agentEncodingAESKey, corpID, XmlType)
+	w.cryptoHelper = NewWXBizMsgCrypt(config.AgentToken, config.AgentEncodingAESKey, config.CorpID, XmlType)
 
 	w.registerMsgHandler()
 
@@ -303,8 +303,8 @@ func (w *WeCom) getAccessToken() string {
 	return w.accessToken
 }
 
-// PushTextMessage 推送文本消息
-func (w *WeCom) PushTextMessage(msg *TextPushMessage) error {
+// pushTextMessage 推送文本消息
+func (w *WeCom) pushTextMessage(msg *TextPushMessage) error {
 	accessToken := w.getAccessToken()
 	if accessToken == "" {
 		err := errors.New("access token is invalid")
@@ -352,4 +352,24 @@ func (w *WeCom) PushTextMessage(msg *TextPushMessage) error {
 	}
 
 	return nil
+}
+
+// 推送文本消息的pusher，外部可以以方法表达式的方式进行注册和调用
+func (w *WeCom) TextMessagePusher(userID, content string) error {
+	pushMsg := &TextPushMessage{
+		PushMessage: PushMessage{
+			ToUser:  userID,
+			MsgType: MessageTypeText,
+			AgentID: w.agentID,
+		},
+		Text: struct {
+			Content string `json:"content"` // 文本消息内容
+		}{
+			Content: content,
+		},
+	}
+
+	log.Printf("[DEBUG]|TextMessagePusher|ready to push test message :%v", pushMsg)
+
+	return w.pushTextMessage(pushMsg)
 }

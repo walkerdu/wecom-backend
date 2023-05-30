@@ -13,7 +13,6 @@ import (
 
 	"github.com/walkerdu/wecom-backend/configs"
 	openai "github.com/walkerdu/wecom-backend/pkg/openai-v1"
-	"github.com/walkerdu/wecom-backend/pkg/wecom"
 )
 
 const (
@@ -38,8 +37,7 @@ type chatSessionCtx struct {
 type Chatbot struct {
 	openaiClient *openai.Client
 
-	publisher func(*wecom.TextPushMessage) error
-	agentID   int // TODO wecom是按照应用来接入的，这样要重新设计一下动态支持多个agentID
+	publisher func(string, string) error
 
 	chatResponseCacheMap map[string]*chatResponseCache // 用户消息处理结果的cache，用于并发限制和cache异步回包数据, 目前异步推送后会立刻清除
 	rspCacheMu           sync.Mutex
@@ -54,8 +52,6 @@ func NewChatbot(config *configs.Config) *Chatbot {
 	chatbot = &Chatbot{
 		chatResponseCacheMap: make(map[string]*chatResponseCache),
 		chatSessionCtxMap:    make(map[string]*chatSessionCtx),
-
-		agentID: config.WeCom.AgentID,
 	}
 
 	if config.OpenAI.ApiKey != "" {
@@ -126,7 +122,9 @@ func (c *Chatbot) clearChatCache(userID string) {
 	delete(c.chatResponseCacheMap, userID)
 }
 
-func (c *Chatbot) RegsiterMessagePublish(publisher func(*wecom.TextPushMessage) error) {
+// 注册聊天消息的异步推送回调
+// 其实这里比较好的设计应该是调用ChatBot的调用方，在发起聊天请求中注册一下异步推送的回调，这样就可以支持不同的pusher了
+func (c *Chatbot) RegsiterMessagePublish(publisher func(string, string) error) {
 	c.publisher = publisher
 }
 
@@ -149,22 +147,7 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 			log.Printf("[INFO]WaitChatResponse|userID=%s wait sucess", userID)
 
 			// 消息推送
-			pushMsg := &wecom.TextPushMessage{
-				PushMessage: wecom.PushMessage{
-					ToUser:  userID,
-					MsgType: wecom.MessageTypeText,
-					AgentID: c.agentID,
-				},
-				Text: struct {
-					Content string `json:"content"` // 文本消息内容
-				}{
-					Content: content,
-				},
-			}
-
-			log.Printf("[DEBUG]|WaitChatResponse|ready to push test message :%v", pushMsg)
-
-			if err := c.publisher(pushMsg); err != nil {
+			if err := c.publisher(userID, content); err != nil {
 				log.Printf("[ERROR]WaitChatResponse|publish message failed, userID=%s, err=%s", userID, err)
 				cache.content = content
 				return
