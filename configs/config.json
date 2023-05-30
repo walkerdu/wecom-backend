@@ -1,0 +1,16 @@
+{
+    "open_ai": {
+        "api_key": "your_api_key"
+    },
+    "we_com": {
+        "agent_config": {
+            "corp_id": "your_corp_id",
+            "agent_id": 123,
+            "agent_secret": "your_agent_secret",
+            "agent_token": "your_agent_token",
+            "agent_encoding_aes_key": "your_agent_encoding_aes_key"
+        },
+        "addr": "listten_addr"
+    }
+}
+
