@@ -220,10 +220,10 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 			c.clearChatCache(userID)
 			return cacheContent, nil
 		} else {
-			return "后台数据生成中，请稍后，生成完成会进行推送~\n也可输入:\"继续\"，获取结果", nil
+			return "后台数据生成中，请稍后，生成完成会进行推送~", nil
 		}
 	} else if c.isProcessing(userID) {
-		return "有提问在后台数据生成中，请稍后，生成完成会进行推送~\n也可输入:\"继续\"，获取结果", nil
+		return "有提问在后台数据生成中，请稍后，生成完成会进行推送~", nil
 	}
 
 	// 构造请求参数
