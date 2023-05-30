@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -74,7 +73,7 @@ func (c *Client) Post(httpClient *http.Client, path string, requestBody []byte, 
 
 	// 检查HTTP响应状态码
 	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New("OpenAI API returned non-200 status code")
+		return nil, fmt.Errorf("OpenAI API returned %d status code", resp.StatusCode)
 	}
 
 	rspMsg, err := c.handleMessage(path, resp, asyncMsgChan)
