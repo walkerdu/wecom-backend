@@ -18,7 +18,7 @@ import (
 
 const (
 	maxChatSessionCtxLength     = 6   // 聊天的最大会话长度
-	maxChatResponseCahceTimeout = 600 // 聊天回包保存的最大时效10min
+	maxChatResponseCahceTimeout = 120 // 聊天回包保存的最大时效2min
 )
 
 // 保存用户聊天请求的对应的回包，因为可能是异步触发返回
@@ -41,7 +41,7 @@ type Chatbot struct {
 	publisher func(*wecom.TextPushMessage) error
 	agentID   int // TODO wecom是按照应用来接入的，这样要重新设计一下动态支持多个agentID
 
-	chatResponseCacheMap map[string]*chatResponseCache // 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
+	chatResponseCacheMap map[string]*chatResponseCache // 用户消息处理结果的cache，用于并发限制和cache异步回包数据, 目前异步推送后会立刻清除
 	rspCacheMu           sync.Mutex
 	chatSessionCtxMap    map[string]*chatSessionCtx // 保存聊天的上下文
 	sessionCtxMu         sync.Mutex
@@ -52,7 +52,6 @@ var chatbot *Chatbot
 // NewChatbot 返回一个新的Chatbot实例
 func NewChatbot(config *configs.Config) *Chatbot {
 	chatbot = &Chatbot{
-		// 用户消息处理结果的cache，超过5s，就cache住, 等待用户指令进行推送
 		chatResponseCacheMap: make(map[string]*chatResponseCache),
 		chatSessionCtxMap:    make(map[string]*chatSessionCtx),
 
@@ -71,6 +70,7 @@ func MustChatbot() *Chatbot {
 	return chatbot
 }
 
+// 判断会话是否进行中，同时只能并发一个会话，超时时间2min
 func (c *Chatbot) isProcessing(userID string) bool {
 	c.rspCacheMu.Lock()
 	defer c.rspCacheMu.Unlock()
@@ -97,6 +97,8 @@ func (c *Chatbot) preHitProcess(userID string, input string) (string, error) {
 	return cache.content, nil
 }
 
+// 创建chatResponseCacheMap
+// 用户消息处理结果的cache，用于并发限制和cache异步回包数据, 目前异步推送后会立刻清除
 func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 	c.rspCacheMu.Lock()
 	defer c.rspCacheMu.Unlock()
@@ -116,6 +118,14 @@ func (c *Chatbot) buildChatCache(userID string) *chatResponseCache {
 	return cache
 }
 
+// 清理chatResponseCacheMap
+func (c *Chatbot) clearChatCache(userID string) {
+	c.rspCacheMu.Lock()
+	defer c.rspCacheMu.Unlock()
+
+	delete(c.chatResponseCacheMap, userID)
+}
+
 func (c *Chatbot) RegsiterMessagePublish(publisher func(*wecom.TextPushMessage) error) {
 	c.publisher = publisher
 }
@@ -126,6 +136,7 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 	cache, exist := c.chatResponseCacheMap[userID]
 	if !exist {
 		log.Printf("[ERROR]WaitChatResponse|cache not exist userID=%s", userID)
+		return
 	}
 	c.rspCacheMu.Unlock()
 
@@ -160,9 +171,9 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 			}
 
 			log.Printf("[INFO]|PushTextMessage success, userID:%s", userID)
+			c.clearChatCache(userID)
 
-			delete(c.chatResponseCacheMap, userID)
-		case <-time.After(60 * time.Second):
+		case <-time.After(maxChatResponseCahceTimeout * time.Second):
 			log.Printf("[WARN]WaitChatResponse|timeout, userID=%s", userID)
 		}
 	}()
@@ -223,7 +234,7 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	if strings.TrimSpace(input) == "继续" {
 		cacheContent, _ := c.preHitProcess(userID, input)
 		if cacheContent != "" {
-			delete(c.chatResponseCacheMap, userID)
+			c.clearChatCache(userID)
 			return cacheContent, nil
 		} else {
 			return "后台数据生成中，请稍后，生成完成会进行推送~\n也可输入:\"继续\"，获取结果", nil
@@ -265,12 +276,14 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	rsp, err := c.openaiClient.Post(client, string(openai.OpenAIPathChatCompletion), reqBytes, cache.asyncMsgChan)
 	if err != nil {
 		log.Printf("[ERROR]GetResponse] Post failed, err:%s", err)
+		c.clearChatCache(userID)
 		return "", err
 	}
 
 	chatRsp, ok := rsp.(*openai.ChatCompletionRsp)
 	if !ok {
 		log.Printf("[ERROR]GetResponse] rsp invalid rsp:%v", rsp)
+		c.clearChatCache(userID)
 		return "", err
 	}
 

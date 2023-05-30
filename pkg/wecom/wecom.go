@@ -152,6 +152,8 @@ func (w *WeCom) handleTextMessage(wr http.ResponseWriter, req *http.Request, bod
 		return
 	}
 
+	log.Printf("[DEBUG]handleTextMessage|Unmarshal message:%v", textMsg)
+
 	// 并发检测，封装在一个闭包中，保证异常锁可以正常释放
 	concurrency_check_lmd := func() bool {
 		w.mu.Lock()

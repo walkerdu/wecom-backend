@@ -28,7 +28,7 @@ func (t *TextMessageHandler) HandleMessage(msg wecom.MessageIF) (wecom.MessageIF
 	chatRsp, err := chatbot.MustChatbot().GetResponse(textMsg.FromUserName, textMsg.Content)
 	if err != nil {
 		log.Printf("[ERROR][HandleMessage] chatbot.GetResponse failed, err=%s", err)
-		chatRsp = "chatbot something wrong, please contact owner"
+		chatRsp = "chatbot something wrong, errMsg:" + err.Error()
 	}
 
 	textMsgRsp := wecom.TextMessageRsp{
