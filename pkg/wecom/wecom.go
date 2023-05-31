@@ -379,7 +379,7 @@ func (w *WeCom) PushMarkdowntMessage(userID, content string) error {
 	pushMsg := &MarkdownPushMessage{
 		PushMessage: PushMessage{
 			ToUser:  userID,
-			MsgType: MessageTypeText,
+			MsgType: MessageTypeMarkdown,
 			AgentID: w.agentID,
 		},
 		Markdown: struct {
