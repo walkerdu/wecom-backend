@@ -303,29 +303,22 @@ func (w *WeCom) getAccessToken() string {
 	return w.accessToken
 }
 
-// pushTextMessage 推送文本消息
-func (w *WeCom) pushTextMessage(msg *TextPushMessage) error {
+// pushMessage 推送应用消息
+func (w *WeCom) pushMessage(msgBytes []byte) error {
 	accessToken := w.getAccessToken()
 	if accessToken == "" {
 		err := errors.New("access token is invalid")
-		log.Printf("[ERROR]PushTextMessage|getAccessToken failed, err:%s", err)
+		log.Printf("[ERROR]pushMessage|getAccessToken failed, err:%s", err)
 		return err
 	}
 
 	// 消息发送接口的 API 地址
 	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=%s", accessToken)
 
-	// 将消息转为 JSON 格式
-	msgBytes, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("[ERROR]PushTextMessage|json Marshal failed, err:%s", err)
-		return err
-	}
-
 	// 发送 POST 请求推送消息
 	res, err := http.Post(url, "application/json", bytes.NewReader(msgBytes))
 	if err != nil {
-		log.Printf("[ERROR]PushTextMessage|http Post failed, err:%s", err)
+		log.Printf("[ERROR]pushMessage|http Post failed, err:%s", err)
 		return err
 	}
 	defer res.Body.Close()
@@ -333,20 +326,20 @@ func (w *WeCom) pushTextMessage(msg *TextPushMessage) error {
 	// 读取返回结果中的信息
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Printf("[ERROR]PushTextMessage|ReadAll failed, err:%s", err)
+		log.Printf("[ERROR]pushMessage|ReadAll failed, err:%s", err)
 		return err
 	}
 
 	// 解析返回结果中的 JSON 数据
 	var msgRsp PushMessageRsp
 	if err := json.Unmarshal(body, &msgRsp); err != nil {
-		log.Printf("[ERROR]PushTextMessage|json Unmarshal failed, err:%s", err)
+		log.Printf("[ERROR]pushMessage|json Unmarshal failed, err:%s", err)
 		return err
 	}
 
 	// 判断是否推送消息成功
 	if msgRsp.ErrCode != 0 {
-		err := fmt.Errorf("PushTextMessage|return error, errcode: %d, errmsg: %s", msgRsp.ErrCode, msgRsp.ErrMsg)
+		err := fmt.Errorf("pushMessage|return error, errcode: %d, errmsg: %s", msgRsp.ErrCode, msgRsp.ErrMsg)
 		log.Printf("[ERROR]|:%s", err)
 		return err
 	}
@@ -355,7 +348,7 @@ func (w *WeCom) pushTextMessage(msg *TextPushMessage) error {
 }
 
 // 推送文本消息的pusher，外部可以以方法表达式的方式进行注册和调用
-func (w *WeCom) TextMessagePusher(userID, content string) error {
+func (w *WeCom) PushTextMessage(userID, content string) error {
 	pushMsg := &TextPushMessage{
 		PushMessage: PushMessage{
 			ToUser:  userID,
@@ -369,7 +362,41 @@ func (w *WeCom) TextMessagePusher(userID, content string) error {
 		},
 	}
 
-	log.Printf("[DEBUG]|TextMessagePusher|ready to push test message :%v", pushMsg)
+	// 将消息转为 JSON 格式
+	msgBytes, err := json.Marshal(pushMsg)
+	if err != nil {
+		log.Printf("[ERROR]PushTextMessage|json Marshal failed, err:%s", err)
+		return err
+	}
 
-	return w.pushTextMessage(pushMsg)
+	log.Printf("[DEBUG]|PushTextMessage|ready to push test message :%v", pushMsg)
+
+	return w.pushMessage(msgBytes)
+}
+
+// 推送文本消息的pusher，外部可以以方法表达式的方式进行注册和调用
+func (w *WeCom) PushMarkdowntMessage(userID, content string) error {
+	pushMsg := &MarkdownPushMessage{
+		PushMessage: PushMessage{
+			ToUser:  userID,
+			MsgType: MessageTypeText,
+			AgentID: w.agentID,
+		},
+		Markdown: struct {
+			Content string `json:"content"` // 文本消息内容
+		}{
+			Content: content,
+		},
+	}
+
+	// 将消息转为 JSON 格式
+	msgBytes, err := json.Marshal(pushMsg)
+	if err != nil {
+		log.Printf("[ERROR]PushMarkdowntMessage|json Marshal failed, err:%s", err)
+		return err
+	}
+
+	log.Printf("[DEBUG]|PushMarkdowntMessage|ready to push test message :%v", pushMsg)
+
+	return w.pushMessage(msgBytes)
 }

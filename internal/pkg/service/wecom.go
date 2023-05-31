@@ -14,7 +14,7 @@ import (
 
 type WeComServer struct {
 	httpSvr *http.Server
-	wx      *wecom.WeCom
+	wc      *wecom.WeCom
 }
 
 func NewWeComServer(config *configs.WeComConfig) (*WeComServer, error) {
@@ -23,10 +23,10 @@ func NewWeComServer(config *configs.WeComConfig) (*WeComServer, error) {
 	svr := &WeComServer{}
 
 	// 初始化微信公众号API
-	svr.wx = wecom.NewWeCom(&config.AgentConfig)
+	svr.wc = wecom.NewWeCom(&config.AgentConfig)
 
 	mux := http.NewServeMux()
-	mux.Handle("/wecom", svr.wx)
+	mux.Handle("/wecom", svr.wc)
 
 	svr.httpSvr = &http.Server{
 		Addr:    config.Addr,
@@ -36,14 +36,14 @@ func NewWeComServer(config *configs.WeComConfig) (*WeComServer, error) {
 	svr.InitHandler()
 
 	// 注册聊天消息的异步推送回调
-	chatbot.MustChatbot().RegsiterMessagePublish(svr.wx.TextMessagePusher)
+	chatbot.MustChatbot().RegsiterMessagePublish(svr.wc.PushTextMessage)
 
 	return svr, nil
 }
 
 func (svr *WeComServer) InitHandler() error {
 	for msgType, handler := range handler.HandlerInst().GetLogicHandlerMap() {
-		svr.wx.RegisterLogicMsgHandler(msgType, handler.HandleMessage)
+		svr.wc.RegisterLogicMsgHandler(msgType, handler.HandleMessage)
 	}
 
 	return nil
