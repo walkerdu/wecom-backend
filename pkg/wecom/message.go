@@ -4,7 +4,7 @@ import (
 	"encoding/xml"
 )
 
-// MessageType 是公众号消息类型
+// MessageType 是企业消息类型
 type MessageType string
 
 const (
@@ -17,6 +17,7 @@ const (
 	MessageTypeLink     MessageType = "link"     // 表示链接消息类型
 	MessageTypeEvent    MessageType = "event"    // 表示事件消息类型
 	MessageTypeNews     MessageType = "news"     // 表示图文消息类型
+	MessageTypeMarkdown MessageType = "markdown" // 表示Markdown消息类型，目前只限推送消息
 )
 
 type MessageIF interface {

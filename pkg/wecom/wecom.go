@@ -369,7 +369,7 @@ func (w *WeCom) PushTextMessage(userID, content string) error {
 		return err
 	}
 
-	log.Printf("[DEBUG]|PushTextMessage|ready to push test message :%v", pushMsg)
+	log.Printf("[DEBUG]|PushTextMessage|ready to push text message :%v", msgBytes)
 
 	return w.pushMessage(msgBytes)
 }
@@ -396,7 +396,7 @@ func (w *WeCom) PushMarkdowntMessage(userID, content string) error {
 		return err
 	}
 
-	log.Printf("[DEBUG]|PushMarkdowntMessage|ready to push test message :%v", pushMsg)
+	log.Printf("[DEBUG]|PushMarkdowntMessage|ready to push markdown message :%v", msgBytes)
 
 	return w.pushMessage(msgBytes)
 }
