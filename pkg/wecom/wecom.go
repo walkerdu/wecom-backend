@@ -6,8 +6,10 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"sync"
@@ -374,7 +376,7 @@ func (w *WeCom) PushTextMessage(userID, content string) error {
 	return w.pushMessage(msgBytes)
 }
 
-// 推送文本消息的pusher，外部可以以方法表达式的方式进行注册和调用
+// 推送Markdown文本消息的pusher，外部可以以方法表达式的方式进行注册和调用
 func (w *WeCom) PushMarkdowntMessage(userID, content string) error {
 	pushMsg := &MarkdownPushMessage{
 		PushMessage: PushMessage{
@@ -399,4 +401,109 @@ func (w *WeCom) PushMarkdowntMessage(userID, content string) error {
 	log.Printf("[DEBUG]|PushMarkdowntMessage|ready to push markdown message :%s", string(msgBytes))
 
 	return w.pushMessage(msgBytes)
+}
+
+// 推送文件消息的pusher，外部可以以方法表达式的方式进行注册和调用
+func (w *WeCom) PushFileMessage(userID, mediaId string) error {
+	pushMsg := &FilePushMessage{
+		PushMessage: PushMessage{
+			ToUser:  userID,
+			MsgType: MessageTypeFile,
+			AgentID: w.agentID,
+		},
+		File: struct {
+			MediaId string `json:"media_id"` // 文本消息内容
+		}{
+			MediaId: mediaId,
+		},
+	}
+
+	// 将消息转为 JSON 格式
+	msgBytes, err := json.Marshal(pushMsg)
+	if err != nil {
+		log.Printf("[ERROR]PushFileMessage|json Marshal failed, err:%s", err)
+		return err
+	}
+
+	log.Printf("[DEBUG]|PushFileMessage|ready to push message :%s", string(msgBytes))
+
+	return w.pushMessage(msgBytes)
+}
+
+// 上传临时素材，支持媒体文件类型，分别有图片（image）、语音（voice）、视频（video），普通文件（file）
+// 素材上传得到media_id，该media_id仅三天内有效
+func (w *WeCom) UploadTemporaryMedia(mediaType MessageType, mediaName string, mediaData []byte) error {
+	accessToken := w.getAccessToken()
+	if accessToken == "" {
+		err := errors.New("access token is invalid")
+		log.Printf("[ERROR]UploadTemporaryMedia|getAccessToken failed, err:%s", err)
+		return err
+	}
+
+	// 消息发送接口的 API 地址
+	//url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=%s", accessToken)
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/media/upload?access_token=%s&type=%s", accessToken, "file")
+
+	// 创建一个新的表单数据
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// 创建一个新的表单字段
+	part, err := writer.CreateFormFile("media", mediaName)
+	if err != nil {
+		log.Printf("[ERROR]UploadTemporaryMedia|CreateFormFile failed, err=%s", err)
+		return err
+	}
+
+	// 将文件内容写入表单字段
+	_, err = io.Copy(part, bytes.NewReader(mediaData))
+	if err != nil {
+		log.Printf("[ERROR]UploadTemporaryMedia|io.Copy failed, err=%s", err)
+		return err
+	}
+
+	writer.Close()
+
+	// 创建一个 HTTP 请求
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		log.Printf("[ERROR]UploadTemporaryMedia|NewRequest failed, err=%s", err)
+		return err
+	}
+
+	// 设置表单数据类型和长度
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.ContentLength = int64(body.Len())
+
+	// 发送 HTTP 请求
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		log.Printf("[ERROR]UploadTemporaryMedia|client.Do() failed, err=%s", err)
+		return err
+	}
+	defer res.Body.Close()
+
+	// 读取返回结果中的信息
+	rspBody, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Printf("[ERROR]UploadTemporaryMedia|ReadAll failed, err:%s", err)
+		return err
+	}
+
+	// 解析返回结果中的 JSON 数据
+	var msgRsp UploadTemporaryMediaMessageRsp
+	if err := json.Unmarshal(rspBody, &msgRsp); err != nil {
+		log.Printf("[ERROR]UploadTemporaryMedia|json Unmarshal failed, err:%s", err)
+		return err
+	}
+
+	// 判断是否推送消息成功
+	if msgRsp.ErrCode != 0 {
+		err := fmt.Errorf("UploadTemporaryMedia|return error, errcode: %d, errmsg: %s", msgRsp.ErrCode, msgRsp.ErrMsg)
+		log.Printf("[ERROR]|:%s", err)
+		return err
+	}
+
+	return nil
 }
