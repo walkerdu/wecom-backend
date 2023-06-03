@@ -432,12 +432,12 @@ func (w *WeCom) PushFileMessage(userID, mediaId string) error {
 
 // 上传临时素材，支持媒体文件类型，分别有图片（image）、语音（voice）、视频（video），普通文件（file）
 // 素材上传得到media_id，该media_id仅三天内有效
-func (w *WeCom) UploadTemporaryMedia(mediaType MessageType, mediaName string, mediaData []byte) error {
+func (w *WeCom) UploadTemporaryMedia(mediaType MessageType, mediaName string, mediaData []byte) (string, error) {
 	accessToken := w.getAccessToken()
 	if accessToken == "" {
 		err := errors.New("access token is invalid")
 		log.Printf("[ERROR]UploadTemporaryMedia|getAccessToken failed, err:%s", err)
-		return err
+		return "", err
 	}
 
 	// 消息发送接口的 API 地址
@@ -452,14 +452,14 @@ func (w *WeCom) UploadTemporaryMedia(mediaType MessageType, mediaName string, me
 	part, err := writer.CreateFormFile("media", mediaName)
 	if err != nil {
 		log.Printf("[ERROR]UploadTemporaryMedia|CreateFormFile failed, err=%s", err)
-		return err
+		return "", err
 	}
 
 	// 将文件内容写入表单字段
 	_, err = io.Copy(part, bytes.NewReader(mediaData))
 	if err != nil {
 		log.Printf("[ERROR]UploadTemporaryMedia|io.Copy failed, err=%s", err)
-		return err
+		return "", err
 	}
 
 	writer.Close()
@@ -468,7 +468,7 @@ func (w *WeCom) UploadTemporaryMedia(mediaType MessageType, mediaName string, me
 	req, err := http.NewRequest("POST", url, body)
 	if err != nil {
 		log.Printf("[ERROR]UploadTemporaryMedia|NewRequest failed, err=%s", err)
-		return err
+		return "", err
 	}
 
 	// 设置表单数据类型和长度
@@ -480,7 +480,7 @@ func (w *WeCom) UploadTemporaryMedia(mediaType MessageType, mediaName string, me
 	res, err := client.Do(req)
 	if err != nil {
 		log.Printf("[ERROR]UploadTemporaryMedia|client.Do() failed, err=%s", err)
-		return err
+		return "", err
 	}
 	defer res.Body.Close()
 
@@ -488,22 +488,22 @@ func (w *WeCom) UploadTemporaryMedia(mediaType MessageType, mediaName string, me
 	rspBody, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		log.Printf("[ERROR]UploadTemporaryMedia|ReadAll failed, err:%s", err)
-		return err
+		return "", err
 	}
 
 	// 解析返回结果中的 JSON 数据
 	var msgRsp UploadTemporaryMediaMessageRsp
 	if err := json.Unmarshal(rspBody, &msgRsp); err != nil {
 		log.Printf("[ERROR]UploadTemporaryMedia|json Unmarshal failed, err:%s", err)
-		return err
+		return "", err
 	}
 
 	// 判断是否推送消息成功
 	if msgRsp.ErrCode != 0 {
 		err := fmt.Errorf("UploadTemporaryMedia|return error, errcode: %d, errmsg: %s", msgRsp.ErrCode, msgRsp.ErrMsg)
 		log.Printf("[ERROR]|:%s", err)
-		return err
+		return "", err
 	}
 
-	return nil
+	return msgRsp.MediaId, nil
 }
