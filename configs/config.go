@@ -1,13 +1,9 @@
 package configs
 
 import (
+	"github.com/walkerdu/wecom-backend/pkg/chatbot"
 	"github.com/walkerdu/wecom-backend/pkg/wecom"
 )
-
-// openai配置
-type OpenAIConfig struct {
-	ApiKey string `json:"api_key"`
-}
 
 // 企业微信配置
 type WeComConfig struct {
@@ -16,6 +12,6 @@ type WeComConfig struct {
 }
 
 type Config struct {
-	OpenAI OpenAIConfig `json:"open_ai"`
-	WeCom  WeComConfig  `json:"we_com"`
+	OpenAI chatbot.OpenAIConfig `json:"open_ai"`
+	WeCom  WeComConfig          `json:"we_com"`
 }

@@ -10,8 +10,8 @@ import (
 	"syscall"
 
 	"github.com/walkerdu/wecom-backend/configs"
-	"github.com/walkerdu/wecom-backend/internal/pkg/chatbot"
 	"github.com/walkerdu/wecom-backend/internal/pkg/service"
+	"github.com/walkerdu/wecom-backend/pkg/chatbot"
 )
 
 var (
@@ -76,7 +76,7 @@ func main() {
 
 	log.Printf("[INFO] starup config:%v", config)
 
-	chatbot.NewChatbot(config)
+	chatbot.NewChatbot(&chatbot.Config{OpenAI: config.OpenAI})
 
 	ws, err := service.NewWeComServer(&config.WeCom)
 	if err != nil {

@@ -3,7 +3,7 @@ package handler
 import (
 	"log"
 
-	"github.com/walkerdu/wecom-backend/internal/pkg/chatbot"
+	"github.com/walkerdu/wecom-backend/pkg/chatbot"
 	"github.com/walkerdu/wecom-backend/pkg/wecom"
 )
 
