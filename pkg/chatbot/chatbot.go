@@ -41,10 +41,10 @@ type chatResponseCache struct {
 
 // 每条消息，按userid持久化到DB
 type chatMessage struct {
-	content string `json:"content"`
-	ts      int64  `json:"ts"`
-	role    string `json:"role"`
-	ai      string `json:"ai"`
+	Content string `json:"content"`
+	Ts      int64  `json:"ts"`
+	Role    string `json:"role"`
+	Ai      string `json:"ai"`
 }
 
 type chatSessionCtx struct {
@@ -220,10 +220,10 @@ func (c *Chatbot) AddChatSessionCtx(userID string, content string, role, aiName 
 	defer c.sessionCtxMu.Unlock()
 
 	message := &chatMessage{
-		content: content,
-		ts:      time.Now().Unix(),
-		role:    role,
-		ai:      aiName,
+		Content: content,
+		Ts:      time.Now().Unix(),
+		Role:    role,
+		Ai:      aiName,
 	}
 
 	if c.redisClient != nil {
@@ -238,10 +238,10 @@ func (c *Chatbot) AddChatSessionCtx(userID string, content string, role, aiName 
 
 		_, err = c.redisClient.RPush(ctx, key, data).Result()
 		if err != nil {
-			log.Printf("[ERROR][AddChatSessionCtx] redis LPush failed, err=%s", err)
+			log.Printf("[ERROR][AddChatSessionCtx] redis RPush failed, err=%s", err)
 		}
 
-		log.Printf("[INFO][AddChatSessionCtx] redis LPush success, message=%v", data)
+		log.Printf("[INFO][AddChatSessionCtx] redis RPush success, message=%v", string(data))
 	} else {
 		var chatCtx *chatSessionCtx
 		chatCtx, exist := c.chatSessionCtxMap[userID]
@@ -299,13 +299,13 @@ func (c *Chatbot) GetChatSessionCtx(userID string, ctxs []openai.ChatMessage) []
 		}
 
 		for _, msg := range messages {
-			role := msg.role
+			role := msg.Role
 			if role == ChatRoleAI {
 				role = "assistant"
 			}
 
 			ctxs = append(ctxs, openai.ChatMessage{
-				Content: msg.content,
+				Content: msg.Content,
 				Role:    openai.RoleType(role),
 			})
 		}
@@ -319,13 +319,13 @@ func (c *Chatbot) GetChatSessionCtx(userID string, ctxs []openai.ChatMessage) []
 		for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
 			msg, _ := e.Value.(*chatMessage)
 
-			role := msg.role
+			role := msg.Role
 			if role == ChatRoleAI {
 				role = "assistant"
 			}
 
 			ctxs = append(ctxs, openai.ChatMessage{
-				Content: msg.content,
+				Content: msg.Content,
 				Role:    openai.RoleType(role),
 			})
 		}
@@ -347,14 +347,14 @@ func (c *Chatbot) GetGeminiChatSessionCtx(userID string) []*genai.Content {
 		}
 
 		for _, msg := range messages {
-			role := msg.role
+			role := msg.Role
 			if role == ChatRoleAI {
 				role = "model"
 			}
 
 			ctxs = append(ctxs, &genai.Content{
 				Parts: []genai.Part{
-					genai.Text(msg.content),
+					genai.Text(msg.Content),
 				},
 				Role: role,
 			})
@@ -370,14 +370,14 @@ func (c *Chatbot) GetGeminiChatSessionCtx(userID string) []*genai.Content {
 		for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
 			msg, _ := e.Value.(*chatMessage)
 
-			role := msg.role
+			role := msg.Role
 			if role == ChatRoleAI {
 				role = "model"
 			}
 
 			ctxs = append(ctxs, &genai.Content{
 				Parts: []genai.Part{
-					genai.Text(msg.content),
+					genai.Text(msg.Content),
 				},
 				Role: role,
 			})
