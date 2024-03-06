@@ -5,7 +5,14 @@
     },
     "gemini": {
         "api_key": "your_api_key",
-        "enable": true 
+        "enable": false 
+    },
+    "redis" : {
+        "addr" : "",
+        "username": "default",
+        "password" : "",
+        "db" : 0,
+        "enable" : false
     },
     "we_com": {
         "agent_config": {

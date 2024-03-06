@@ -15,12 +15,19 @@ import (
 	openai "github.com/walkerdu/wecom-backend/pkg/openai-v1"
 
 	"github.com/google/generative-ai-go/genai"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/api/option"
 )
 
 const (
 	maxChatSessionCtxLength     = 6   // 聊天的最大会话长度
 	maxChatResponseCahceTimeout = 120 // 聊天回包保存的最大时效2min
+
+	ChatRoleUser = "user"
+	ChatRoleAI   = "ai"
+
+	AIName_OpenAI = "openai"
+	AIName_Gemini = "gemini"
 )
 
 // 保存用户聊天请求的对应的回包，因为可能是异步触发返回
@@ -29,6 +36,15 @@ type chatResponseCache struct {
 	msgId        int64
 	begin        int64
 	asyncMsgChan chan string
+	ai           string
+}
+
+// 每条消息，按userid持久化到DB
+type chatMessage struct {
+	content string `json:"content"`
+	ts      int64  `json:"ts"`
+	role    string `json:"role"`
+	ai      string `json:"ai"`
 }
 
 type chatSessionCtx struct {
@@ -40,6 +56,8 @@ type chatSessionCtx struct {
 type Chatbot struct {
 	openaiClient *openai.Client
 	geminiClient *genai.Client
+
+	redisClient *redis.Client
 
 	publisher func(string, string) error
 
@@ -72,6 +90,21 @@ func NewChatbot(config *Config) *Chatbot {
 		}
 
 		chatbot.geminiClient = geminiClient
+	}
+
+	if config.Redis.Enable {
+		rdb := redis.NewClient(&redis.Options{
+			Addr:     config.Redis.Addr,
+			Username: config.Redis.Username,
+			Password: config.Redis.Password,
+			DB:       config.Redis.DB,
+		})
+
+		if rdb == nil {
+			log.Fatal("NewChatbot| create redis client failed, config:%+v", config.Redis)
+		}
+
+		chatbot.redisClient = rdb
 	}
 
 	return chatbot
@@ -162,7 +195,7 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 			} else {
 				// 保存聊天上下文
 				// TODO: 存入DB
-				c.AddChatSessionCtx(userID, content, false)
+				c.AddChatSessionCtx(userID, content, ChatRoleAI, cache.ai)
 				log.Printf("[INFO]WaitChatResponse|userID=%s wait sucess", userID)
 				cache.content = content
 			}
@@ -182,50 +215,120 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 	}()
 }
 
-func (c *Chatbot) AddChatSessionCtx(userID string, content string, isUser bool) {
+func (c *Chatbot) AddChatSessionCtx(userID string, content string, role, aiName string) {
 	c.sessionCtxMu.Lock()
 	defer c.sessionCtxMu.Unlock()
 
-	var chatCtx *chatSessionCtx
+	message := &chatMessage{
+		content: content,
+		ts:      time.Now().Unix(),
+		role:    role,
+		ai:      aiName,
+	}
 
-	chatCtx, exist := c.chatSessionCtxMap[userID]
-	if !exist {
-		chatCtx = &chatSessionCtx{
-			chatHistory: list.New(),
+	if c.redisClient != nil {
+		ctx := context.Background()
+		key := "chatbot_" + userID
+
+		data, err := json.Marshal(message)
+		if err != nil {
+			log.Printf("[ERROR][AddChatSessionCtx] json Marshal failed, err=%s", err)
+			return
 		}
 
-		c.chatSessionCtxMap[userID] = chatCtx
-	}
+		_, err = c.redisClient.RPush(ctx, key, data).Result()
+		if err != nil {
+			log.Printf("[ERROR][AddChatSessionCtx] redis LPush failed, err=%s", err)
+		}
 
-	if chatCtx.chatHistory.Len() >= maxChatSessionCtxLength {
-		chatCtx.chatHistory.Remove(chatCtx.chatHistory.Front())
-	}
-
-	message := &openai.ChatMessage{
-		Content: content,
-	}
-	if isUser {
-		message.Role = "user"
+		log.Printf("[INFO][AddChatSessionCtx] redis LPush success, message=%v", data)
 	} else {
-		message.Role = "assistant"
+		var chatCtx *chatSessionCtx
+		chatCtx, exist := c.chatSessionCtxMap[userID]
+		if !exist {
+			chatCtx = &chatSessionCtx{
+				chatHistory: list.New(),
+			}
+
+			c.chatSessionCtxMap[userID] = chatCtx
+		}
+
+		if chatCtx.chatHistory.Len() >= maxChatSessionCtxLength {
+			chatCtx.chatHistory.Remove(chatCtx.chatHistory.Front())
+		}
+
+		chatCtx.chatHistory.PushBack(message)
+	}
+}
+
+func (c *Chatbot) GetChatMessageFromDB(userID string) []chatMessage {
+	ctx := context.Background()
+	key := "chatbot_" + userID
+
+	result, err := c.redisClient.LRange(ctx, key, -maxChatSessionCtxLength, -1).Result()
+	if err != nil {
+		log.Printf("[ERROR][GetChatMessageFromDB] redis LRange failed, err=%s", err)
+		return nil
 	}
 
-	chatCtx.chatHistory.PushBack(message)
+	messages := []chatMessage{}
+	for _, data := range result {
+		var message chatMessage
+		err := json.Unmarshal([]byte(data), &message)
+		if err != nil {
+			log.Printf("[ERROR][GetChatMessageFromDB] json Unmarshal failed, err=%s", err)
+			continue
+		}
+
+		messages = append(messages, message)
+	}
+
+	log.Printf("[INFO][GetChatMessageFromDB] redis LRange success, message=%+v", messages)
+
+	return messages
 }
 
 func (c *Chatbot) GetChatSessionCtx(userID string, ctxs []openai.ChatMessage) []openai.ChatMessage {
 	c.sessionCtxMu.Lock()
 	defer c.sessionCtxMu.Unlock()
 
-	chatCtx, exist := c.chatSessionCtxMap[userID]
-	if !exist {
-		return ctxs
-	}
+	if c.redisClient != nil {
+		messages := c.GetChatMessageFromDB(userID)
+		if messages == nil || len(messages) == 0 {
+			return ctxs
+		}
 
-	// 遍历队列中的元素
-	for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
-		msg, _ := e.Value.(*openai.ChatMessage)
-		ctxs = append(ctxs, *msg)
+		for _, msg := range messages {
+			role := msg.role
+			if role == ChatRoleAI {
+				role = "assistant"
+			}
+
+			ctxs = append(ctxs, openai.ChatMessage{
+				Content: msg.content,
+				Role:    openai.RoleType(role),
+			})
+		}
+	} else {
+		chatCtx, exist := c.chatSessionCtxMap[userID]
+		if !exist {
+			return ctxs
+		}
+
+		// 遍历队列中的元素
+		for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
+			msg, _ := e.Value.(*chatMessage)
+
+			role := msg.role
+			if role == ChatRoleAI {
+				role = "assistant"
+			}
+
+			ctxs = append(ctxs, openai.ChatMessage{
+				Content: msg.content,
+				Role:    openai.RoleType(role),
+			})
+		}
 	}
 
 	return ctxs
@@ -237,26 +340,48 @@ func (c *Chatbot) GetGeminiChatSessionCtx(userID string) []*genai.Content {
 
 	ctxs := []*genai.Content{}
 
-	chatCtx, exist := c.chatSessionCtxMap[userID]
-	if !exist {
-		return ctxs
-	}
-
-	// 遍历队列中的元素
-	// gemini要求history必须是成对的，不能只有"user" 或者 "model"
-	for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
-		msg, _ := e.Value.(*openai.ChatMessage)
-		role := "user"
-		if msg.Role == "assistant" {
-			role = "model"
+	if c.redisClient != nil {
+		messages := c.GetChatMessageFromDB(userID)
+		if messages == nil || len(messages) == 0 {
+			return ctxs
 		}
 
-		ctxs = append(ctxs, &genai.Content{
-			Parts: []genai.Part{
-				genai.Text(msg.Content),
-			},
-			Role: role,
-		})
+		for _, msg := range messages {
+			role := msg.role
+			if role == ChatRoleAI {
+				role = "model"
+			}
+
+			ctxs = append(ctxs, &genai.Content{
+				Parts: []genai.Part{
+					genai.Text(msg.content),
+				},
+				Role: role,
+			})
+		}
+	} else {
+		chatCtx, exist := c.chatSessionCtxMap[userID]
+		if !exist {
+			return ctxs
+		}
+
+		// 遍历队列中的元素
+		// gemini要求history必须是成对的，不能只有"user" 或者 "model"
+		for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
+			msg, _ := e.Value.(*chatMessage)
+
+			role := msg.role
+			if role == ChatRoleAI {
+				role = "model"
+			}
+
+			ctxs = append(ctxs, &genai.Content{
+				Parts: []genai.Part{
+					genai.Text(msg.content),
+				},
+				Role: role,
+			})
+		}
 	}
 
 	for _, ctx := range ctxs {
@@ -291,8 +416,10 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	cache := c.buildChatCache(userID)
 
 	if c.openaiClient != nil {
+		cache.ai = AIName_OpenAI
 		return c.OpenAIRequest(cache, userID, input)
 	} else {
+		cache.ai = AIName_Gemini
 		return c.GeminiRequest(cache, userID, input)
 	}
 }
@@ -334,7 +461,7 @@ func (c *Chatbot) OpenAIRequest(cache *chatResponseCache, userID string, input s
 	}
 
 	// 保存聊天上下文
-	c.AddChatSessionCtx(userID, input, true)
+	c.AddChatSessionCtx(userID, input, ChatRoleUser, AIName_OpenAI)
 
 	c.WaitChatResponse(userID)
 
@@ -392,7 +519,7 @@ func (c *Chatbot) GeminiRequest(cache *chatResponseCache, userID string, input s
 	}()
 
 	// 保存聊天上下文
-	c.AddChatSessionCtx(userID, input, true)
+	c.AddChatSessionCtx(userID, input, ChatRoleUser, AIName_Gemini)
 
 	c.WaitChatResponse(userID)
 

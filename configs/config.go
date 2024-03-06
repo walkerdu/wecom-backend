@@ -15,4 +15,5 @@ type Config struct {
 	OpenAI chatbot.OpenAIConfig `json:"open_ai"`
 	Gemini chatbot.GeminiConfig `json:"gemini"`
 	WeCom  WeComConfig          `json:"we_com"`
+	Redis  chatbot.RedisConfig  `json:"redis"`
 }

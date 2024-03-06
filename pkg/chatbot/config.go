@@ -12,7 +12,16 @@ type GeminiConfig struct {
 	Enable bool   `json:"enable"`
 }
 
+type RedisConfig struct {
+	Addr     string `json:"addr"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	DB       int    `json:"db"`
+	Enable   bool   `json:"enable"`
+}
+
 type Config struct {
 	OpenAI OpenAIConfig `json:"open_ai"`
 	Gemini GeminiConfig `json:"gemini"`
+	Redis  RedisConfig  `json:"redis"`
 }
