@@ -384,8 +384,19 @@ func (c *Chatbot) GetGeminiChatSessionCtx(userID string) []*genai.Content {
 		}
 	}
 
+	roleUserCnt := 0
 	for _, ctx := range ctxs {
+		if ctx.Role != "model" {
+			roleUserCnt++
+		}
+
 		log.Printf("[DEBUG][GetGeminiChatSessionCtx] %#v", *ctx)
+	}
+
+	// 历史错误，会导致gemini拒绝请求，400错误
+	if roleUserCnt != len(ctxs)/2 {
+		log.Printf("[ERROR][GetGeminiChatSessionCtx] history invalid")
+		return []*genai.Content{}
 	}
 
 	return ctxs
