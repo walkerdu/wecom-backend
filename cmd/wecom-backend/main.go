@@ -76,7 +76,7 @@ func main() {
 
 	log.Printf("[INFO] starup config:%v", config)
 
-	chatbot.NewChatbot(&chatbot.Config{OpenAI: config.OpenAI})
+	chatbot.NewChatbot(&chatbot.Config{OpenAI: config.OpenAI, Gemini: config.Gemini})
 
 	ws, err := service.NewWeComServer(&config.WeCom)
 	if err != nil {

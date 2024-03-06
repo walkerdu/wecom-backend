@@ -4,6 +4,7 @@ package chatbot
 
 import (
 	"container/list"
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -12,6 +13,9 @@ import (
 	"time"
 
 	openai "github.com/walkerdu/wecom-backend/pkg/openai-v1"
+
+	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/api/option"
 )
 
 const (
@@ -35,6 +39,7 @@ type chatSessionCtx struct {
 // Chatbot 是聊天机器人结构体
 type Chatbot struct {
 	openaiClient *openai.Client
+	geminiClient *genai.Client
 
 	publisher func(string, string) error
 
@@ -53,9 +58,20 @@ func NewChatbot(config *Config) *Chatbot {
 		chatSessionCtxMap:    make(map[string]*chatSessionCtx),
 	}
 
-	if config.OpenAI.ApiKey != "" {
+	if config.OpenAI.Enable {
 		log.Printf("[INFO][NewChatbot] create openai client")
 		chatbot.openaiClient = openai.NewClient(config.OpenAI.ApiKey)
+	}
+
+	if config.Gemini.Enable {
+		log.Printf("[INFO][NewChatbot] create gemini client")
+		ctx := context.Background()
+		geminiClient, err := genai.NewClient(ctx, option.WithAPIKey(config.Gemini.ApiKey))
+		if err != nil {
+			log.Fatal("NewChatbot| create gemini client failed")
+		}
+
+		chatbot.geminiClient = geminiClient
 	}
 
 	return chatbot
@@ -140,15 +156,20 @@ func (c *Chatbot) WaitChatResponse(userID string) {
 	go func() {
 		select {
 		case content := <-cache.asyncMsgChan:
-			// 保存聊天上下文
-			// TODO: 存入DB
-			c.AddChatSessionCtx(userID, content, false)
-			log.Printf("[INFO]WaitChatResponse|userID=%s wait sucess", userID)
+			if content == "" {
+				// 异常结束
+				content = cache.content
+			} else {
+				// 保存聊天上下文
+				// TODO: 存入DB
+				c.AddChatSessionCtx(userID, content, false)
+				log.Printf("[INFO]WaitChatResponse|userID=%s wait sucess", userID)
+				cache.content = content
+			}
 
 			// 消息推送
 			if err := c.publisher(userID, content); err != nil {
 				log.Printf("[ERROR]WaitChatResponse|publish message failed, userID=%s, err=%s", userID, err)
-				cache.content = content
 				return
 			}
 
@@ -210,6 +231,35 @@ func (c *Chatbot) GetChatSessionCtx(userID string, ctxs []openai.ChatMessage) []
 	return ctxs
 }
 
+func (c *Chatbot) GetGeminiChatSessionCtx(userID string) []*genai.Content {
+	c.sessionCtxMu.Lock()
+	defer c.sessionCtxMu.Unlock()
+
+	ctxs := []*genai.Content{}
+
+	chatCtx, exist := c.chatSessionCtxMap[userID]
+	if !exist {
+		return ctxs
+	}
+
+	// 遍历队列中的元素
+	for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
+		msg, _ := e.Value.(*openai.ChatMessage)
+		role := ""
+		if msg.Role == "assistant" {
+			role = "model"
+		}
+		ctxs = append(ctxs, &genai.Content{
+			Parts: []genai.Part{
+				genai.Text(msg.Content),
+			},
+			Role: role,
+		})
+	}
+
+	return ctxs
+}
+
 // GetResponse 调用聊天机器人API获取响应
 func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	// 用户指令，命中后，直接从cache中读取
@@ -232,6 +282,18 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	//}
 
 	c.AddChatSessionCtx(userID, input, true)
+
+	// 并发控制
+	cache := c.buildChatCache(userID)
+
+	if c.openaiClient != nil {
+		return c.OpenAIRequest(cache, userID, input)
+	} else {
+		return c.GeminiRequest(cache, userID, input)
+	}
+}
+
+func (c *Chatbot) OpenAIRequest(cache *chatResponseCache, userID string, input string) (string, error) {
 	messages := []openai.ChatMessage{}
 	messages = c.GetChatSessionCtx(userID, messages)
 
@@ -252,8 +314,6 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 		Timeout: time.Second * 10,
 	}
 
-	cache := c.buildChatCache(userID)
-
 	// 发送HTTP请求
 	rsp, err := c.openaiClient.Post(client, string(openai.OpenAIPathChatCompletion), reqBytes, cache.asyncMsgChan)
 	if err != nil {
@@ -272,4 +332,59 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	c.WaitChatResponse(userID)
 
 	return chatRsp.GetContent(), nil
+
+}
+
+func (c *Chatbot) GeminiRequest(cache *chatResponseCache, userID string, input string) (string, error) {
+	// For text-only input, use the gemini-pro model
+	model := c.geminiClient.GenerativeModel("gemini-pro")
+	// Initialize the chat
+	cs := model.StartChat()
+	cs.History = c.GetGeminiChatSessionCtx(userID)
+
+	ctx := context.Background()
+
+	go func() {
+		resp, err := cs.SendMessage(ctx, genai.Text(input))
+		if err != nil {
+			log.Printf("[ERROR]|GeminiRequest:SendMessage failed, err:%v", err)
+			cache.content = err.Error()
+			close(cache.asyncMsgChan)
+			return
+		}
+
+		log.Printf("[INFO]|GeminiRequest: recv response::%v", resp)
+		candidates := resp.Candidates
+		if len(candidates) <= 0 {
+			cache.content = "response candidates empty"
+			close(cache.asyncMsgChan)
+			return
+		}
+
+		content := candidates[0].Content
+		if content == nil {
+			cache.content = "response content invalid"
+			close(cache.asyncMsgChan)
+			return
+		}
+
+		parts := content.Parts
+		if len(parts) == 0 {
+			cache.content = "response parts empty"
+			close(cache.asyncMsgChan)
+			return
+		}
+
+		if text, ok := parts[0].(genai.Text); !ok {
+			cache.content = "response parts not text"
+			close(cache.asyncMsgChan)
+			return
+		} else {
+			cache.asyncMsgChan <- string(text)
+		}
+	}()
+
+	c.WaitChatResponse(userID)
+
+	return "Gemini生成中...", nil
 }

@@ -1,6 +1,11 @@
 {
     "open_ai": {
-        "api_key": "your_api_key"
+        "api_key": "your_api_key",
+        "enable": true 
+    },
+    "gemini": {
+        "api_key": "your_api_key",
+        "enable": true 
     },
     "we_com": {
         "agent_config": {
