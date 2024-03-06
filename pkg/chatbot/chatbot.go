@@ -243,18 +243,24 @@ func (c *Chatbot) GetGeminiChatSessionCtx(userID string) []*genai.Content {
 	}
 
 	// 遍历队列中的元素
+	// gemini要求history必须是成对的，不能只有"user" 或者 "model"
 	for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
 		msg, _ := e.Value.(*openai.ChatMessage)
-		role := ""
+		role := "user"
 		if msg.Role == "assistant" {
 			role = "model"
 		}
+
 		ctxs = append(ctxs, &genai.Content{
 			Parts: []genai.Part{
 				genai.Text(msg.Content),
 			},
 			Role: role,
 		})
+	}
+
+	for _, ctx := range ctxs {
+		log.Printf("[DEBUG][GetGeminiChatSessionCtx] %#v", *ctx)
 	}
 
 	return ctxs
@@ -280,8 +286,6 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	//	Role:    openai.User,
 	//	Content: input,
 	//}
-
-	c.AddChatSessionCtx(userID, input, true)
 
 	// 并发控制
 	cache := c.buildChatCache(userID)
@@ -329,6 +333,9 @@ func (c *Chatbot) OpenAIRequest(cache *chatResponseCache, userID string, input s
 		return "", err
 	}
 
+	// 保存聊天上下文
+	c.AddChatSessionCtx(userID, input, true)
+
 	c.WaitChatResponse(userID)
 
 	return chatRsp.GetContent(), nil
@@ -347,7 +354,7 @@ func (c *Chatbot) GeminiRequest(cache *chatResponseCache, userID string, input s
 	go func() {
 		resp, err := cs.SendMessage(ctx, genai.Text(input))
 		if err != nil {
-			log.Printf("[ERROR]|GeminiRequest:SendMessage failed, err:%v", err)
+			log.Printf("[ERROR]|GeminiRequest:SendMessage failed, err:%v, resp:%v", err, resp)
 			cache.content = err.Error()
 			close(cache.asyncMsgChan)
 			return
@@ -383,6 +390,9 @@ func (c *Chatbot) GeminiRequest(cache *chatResponseCache, userID string, input s
 			cache.asyncMsgChan <- string(text)
 		}
 	}()
+
+	// 保存聊天上下文
+	c.AddChatSessionCtx(userID, input, true)
 
 	c.WaitChatResponse(userID)
 
