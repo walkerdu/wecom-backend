@@ -436,6 +436,9 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 }
 
 func (c *Chatbot) OpenAIRequest(cache *chatResponseCache, userID string, input string) (string, error) {
+	// OpenAI的多段对话需要先保存聊天上下文
+	c.AddChatSessionCtx(userID, input, ChatRoleUser, AIName_OpenAI)
+
 	messages := []openai.ChatMessage{}
 	messages = c.GetChatSessionCtx(userID, messages)
 
@@ -470,9 +473,6 @@ func (c *Chatbot) OpenAIRequest(cache *chatResponseCache, userID string, input s
 		c.clearChatCache(userID)
 		return "", err
 	}
-
-	// 保存聊天上下文
-	c.AddChatSessionCtx(userID, input, ChatRoleUser, AIName_OpenAI)
 
 	c.WaitChatResponse(userID)
 
@@ -529,7 +529,7 @@ func (c *Chatbot) GeminiRequest(cache *chatResponseCache, userID string, input s
 		}
 	}()
 
-	// 保存聊天上下文
+	// Gemini的多段聊天需要事后保存聊天上下文, 其实它自己有History的能力，但是为了简单这里自己构造
 	c.AddChatSessionCtx(userID, input, ChatRoleUser, AIName_Gemini)
 
 	c.WaitChatResponse(userID)

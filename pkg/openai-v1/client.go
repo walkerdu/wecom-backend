@@ -103,7 +103,7 @@ func (c *Client) handleChatMessage(rsp *http.Response, asyncMsgChan chan string)
 	if rsp.Header.Get("Content-Type") == "text/event-stream" {
 		choice := ChatCompletionChoice{
 			Message: ChatMessage{
-				Content: "OpenAI数据生成中，请稍后， 生成完成会进行推送~",
+				Content: "OpenAI生成中...",
 			},
 		}
 
