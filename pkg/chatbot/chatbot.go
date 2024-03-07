@@ -228,7 +228,7 @@ func (c *Chatbot) AddChatSessionCtx(userID string, content string, role, aiName 
 
 	if c.redisClient != nil {
 		ctx := context.Background()
-		key := "chatbot_" + userID
+		key := "chatbot-" + aiName + "-" + userID
 
 		data, err := json.Marshal(message)
 		if err != nil {
@@ -261,9 +261,9 @@ func (c *Chatbot) AddChatSessionCtx(userID string, content string, role, aiName 
 	}
 }
 
-func (c *Chatbot) GetChatMessageFromDB(userID string) []chatMessage {
+func (c *Chatbot) GetChatMessageFromDB(userID, aiName string) []chatMessage {
 	ctx := context.Background()
-	key := "chatbot_" + userID
+	key := "chatbot-" + aiName + "-" + userID
 
 	result, err := c.redisClient.LRange(ctx, key, -maxChatSessionCtxLength, -1).Result()
 	if err != nil {
@@ -293,7 +293,7 @@ func (c *Chatbot) GetChatSessionCtx(userID string, ctxs []openai.ChatMessage) []
 	defer c.sessionCtxMu.Unlock()
 
 	if c.redisClient != nil {
-		messages := c.GetChatMessageFromDB(userID)
+		messages := c.GetChatMessageFromDB(userID, AIName_OpenAI)
 		if messages == nil || len(messages) == 0 {
 			return ctxs
 		}
@@ -341,7 +341,7 @@ func (c *Chatbot) GetGeminiChatSessionCtx(userID string) []*genai.Content {
 	ctxs := []*genai.Content{}
 
 	if c.redisClient != nil {
-		messages := c.GetChatMessageFromDB(userID)
+		messages := c.GetChatMessageFromDB(userID, AIName_Gemini)
 		if messages == nil || len(messages) == 0 {
 			return ctxs
 		}
