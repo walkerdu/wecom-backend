@@ -79,6 +79,7 @@ func main() {
 	chatbot.NewChatbot(&chatbot.Config{
 		OpenAI: config.OpenAI,
 		Gemini: config.Gemini,
+		Claude: config.Claude,
 		Redis:  config.Redis,
 	})
 

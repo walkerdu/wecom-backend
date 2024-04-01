@@ -7,6 +7,10 @@
         "api_key": "your_api_key",
         "enable": false 
     },
+    "claude": {
+        "api_key": "your_api_key",
+        "enable": false 
+    },
     "redis" : {
         "addr" : "",
         "username": "default",

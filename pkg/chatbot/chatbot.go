@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/walkerdu/wecom-backend/pkg/claude"
 	openai "github.com/walkerdu/wecom-backend/pkg/openai-v1"
 
 	"github.com/google/generative-ai-go/genai"
@@ -28,6 +29,7 @@ const (
 
 	AIName_OpenAI = "openai"
 	AIName_Gemini = "gemini"
+	AIName_Claude = "claude"
 )
 
 // 保存用户聊天请求的对应的回包，因为可能是异步触发返回
@@ -56,6 +58,7 @@ type chatSessionCtx struct {
 type Chatbot struct {
 	openaiClient *openai.Client
 	geminiClient *genai.Client
+	claudeClient *claude.Client
 
 	redisClient *redis.Client
 
@@ -90,6 +93,11 @@ func NewChatbot(config *Config) *Chatbot {
 		}
 
 		chatbot.geminiClient = geminiClient
+	}
+
+	if config.Claude.Enable {
+		log.Printf("[INFO][NewChatbot] create claude client")
+		chatbot.claudeClient = claude.NewClient(config.Claude.ApiKey)
 	}
 
 	if config.Redis.Enable {
@@ -334,6 +342,67 @@ func (c *Chatbot) GetChatSessionCtx(userID string, ctxs []openai.ChatMessage) []
 	return ctxs
 }
 
+func (c *Chatbot) GetClaudeChatSessionCtx(userID string, ctxs []claude.Message) []claude.Message {
+	c.sessionCtxMu.Lock()
+	defer c.sessionCtxMu.Unlock()
+
+	if c.redisClient != nil {
+		messages := c.GetChatMessageFromDB(userID, AIName_Claude)
+		if messages == nil || len(messages) == 0 {
+			return ctxs
+		}
+
+		for _, msg := range messages {
+			role := msg.Role
+			if role == ChatRoleAI {
+				role = "assistant"
+			}
+
+			ctxs = append(ctxs, claude.Message{
+				Content: msg.Content,
+				Role:    role,
+			})
+		}
+	} else {
+		chatCtx, exist := c.chatSessionCtxMap[userID]
+		if !exist {
+			return ctxs
+		}
+
+		// 遍历队列中的元素
+		for e := chatCtx.chatHistory.Front(); e != nil; e = e.Next() {
+			msg, _ := e.Value.(*chatMessage)
+
+			role := msg.Role
+			if role == ChatRoleAI {
+				role = "assistant"
+			}
+			ctxs = append(ctxs, claude.Message{
+				Content: msg.Content,
+				Role:    role,
+			})
+		}
+	}
+
+	var postCtx []claude.Message
+	for _, msg := range ctxs {
+		// 第一个一定要是user
+		if len(postCtx) == 0 && msg.Role != "user" {
+			continue
+		}
+
+		// 每个要不一样, 如果一样后面覆盖前面
+		if len(postCtx) > 0 && postCtx[len(postCtx)-1].Role == msg.Role {
+			postCtx[len(postCtx)-1] = msg
+			continue
+		}
+
+		postCtx = append(postCtx, msg)
+	}
+
+	return postCtx
+}
+
 func (c *Chatbot) GetGeminiChatSessionCtx(userID string) []*genai.Content {
 	c.sessionCtxMu.Lock()
 	defer c.sessionCtxMu.Unlock()
@@ -429,10 +498,14 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 	if c.openaiClient != nil {
 		cache.ai = AIName_OpenAI
 		return c.OpenAIRequest(cache, userID, input)
-	} else {
+	} else if c.geminiClient != nil {
 		cache.ai = AIName_Gemini
 		return c.GeminiRequest(cache, userID, input)
+	} else if c.claudeClient != nil {
+		return c.ClaudeRequest(cache, userID, input)
 	}
+
+	return "no ai support", nil
 }
 
 func (c *Chatbot) OpenAIRequest(cache *chatResponseCache, userID string, input string) (string, error) {
@@ -477,6 +550,45 @@ func (c *Chatbot) OpenAIRequest(cache *chatResponseCache, userID string, input s
 	c.WaitChatResponse(userID)
 
 	return chatRsp.GetContent(), nil
+
+}
+
+func (c *Chatbot) ClaudeRequest(cache *chatResponseCache, userID string, input string) (string, error) {
+	// Claude的多段对话需要先保存聊天上下文
+	c.AddChatSessionCtx(userID, input, ChatRoleUser, AIName_Claude)
+
+	messages := []claude.Message{}
+	messages = c.GetClaudeChatSessionCtx(userID, messages)
+
+	req := &claude.Request{
+		Model:    claude.Claude3Opus,
+		Messages: messages,
+	}
+
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		log.Printf("[ERROR][GetResponse] Marshal failed, err:%s", err)
+		return "", err
+	}
+
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
+
+	go func() {
+		// 发送HTTP请求
+		err := c.claudeClient.Post(client, reqBytes, cache.asyncMsgChan)
+		if err != nil {
+			log.Printf("[ERROR]Claude Post failed, err:%s", err)
+			cache.content = err.Error()
+			close(cache.asyncMsgChan)
+			return
+		}
+	}()
+
+	c.WaitChatResponse(userID)
+
+	return "Claude生成中...", nil
 
 }
 

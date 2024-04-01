@@ -12,6 +12,12 @@ type GeminiConfig struct {
 	Enable bool   `json:"enable"`
 }
 
+// claude配置
+type ClaudeConfig struct {
+	ApiKey string `json:"api_key"`
+	Enable bool   `json:"enable"`
+}
+
 type RedisConfig struct {
 	Addr     string `json:"addr"`
 	Username string `json:"username"`
@@ -23,5 +29,6 @@ type RedisConfig struct {
 type Config struct {
 	OpenAI OpenAIConfig `json:"open_ai"`
 	Gemini GeminiConfig `json:"gemini"`
+	Claude ClaudeConfig `json:"claude"`
 	Redis  RedisConfig  `json:"redis"`
 }
