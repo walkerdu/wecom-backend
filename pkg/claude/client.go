@@ -35,7 +35,7 @@ func (c *Client) Post(httpClient *http.Client, requestBody []byte, asyncMsgChan 
 
 	req.Header.Set("x-api-key", c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("anthropic-version", string(V20230601))
 
 	// 发送HTTP请求
 	if httpClient != nil {
