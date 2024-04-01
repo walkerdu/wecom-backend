@@ -564,7 +564,7 @@ func (c *Chatbot) ClaudeRequest(cache *chatResponseCache, userID string, input s
 	req := &claude.Request{
 		Model:     claude.Claude3Opus,
 		Messages:  messages,
-		MaxTokens: 4096,
+		MaxTokens: 2048,
 	}
 
 	reqBytes, err := json.Marshal(req)
