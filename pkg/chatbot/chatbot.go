@@ -502,6 +502,7 @@ func (c *Chatbot) GetResponse(userID string, input string) (string, error) {
 		cache.ai = AIName_Gemini
 		return c.GeminiRequest(cache, userID, input)
 	} else if c.claudeClient != nil {
+		cache.ai = AIName_Claude
 		return c.ClaudeRequest(cache, userID, input)
 	}
 
