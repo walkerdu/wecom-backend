@@ -23,12 +23,12 @@ type Message struct {
 }
 
 type Metadata struct {
-	UserID string `json:"user_id"` // 用户的唯一标识符
+	UserID string `json:"user_id,omitempty"` // 用户的唯一标识符
 }
 
 type Request struct {
 	Model         ModelType `json:"model"`                    // 要使用的 Claude 模型名称,例如 "claude-v1.3"
-	MaxTokens     int       `json:"max_tokens,omitempty"`     // 响应的最大令牌数量
+	MaxTokens     int       `json:"max_tokens"`               // 响应的最大令牌数量
 	Messages      []Message `json:"messages"`                 // 对话历史记录,包含用户和助手之前的消息
 	Metadata      Metadata  `json:"metadata,omitempty"`       // 与用户相关的元数据
 	StopSequences []string  `json:"stop_sequences,omitempty"` // 指定在遇到哪些序列时应该终止响应

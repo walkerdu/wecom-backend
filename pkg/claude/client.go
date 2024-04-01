@@ -3,6 +3,7 @@ package claude
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -66,7 +67,7 @@ func (c *Client) Post(httpClient *http.Client, requestBody []byte, asyncMsgChan 
 
 	if resp.Error != nil {
 		log.Printf("Claude response error:%s", resp.Error.Message)
-		asyncMsgChan <- resp.Error.Message
+		return errors.New(resp.Error.Message)
 	}
 
 	asyncMsgChan <- resp.Content[0].Text
